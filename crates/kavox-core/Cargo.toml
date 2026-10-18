@@ -1,0 +1,27 @@
+[package]
+name = "kavox-core"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+ebur128 = "0.1.10"
+rtrb = "0.3"
+rubato = "5.0.1"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+sha2 = "0.11.1"
+symphonia = { version = "0.5", features = ["mp3"] }
+thiserror = "2.0.21"
+tracing = "0.1.44"
+ulid = "3.0.0"
+
+[target.'cfg(windows)'.dependencies]
+cpal = "0.15"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+libpulse-binding = "2"
+libpulse-simple-binding = "2"
+
+[dev-dependencies]
+anyhow = "1"
