@@ -64,9 +64,57 @@ Next:
 3. Basic voice effects (pitch, reverb, echo)
 4. AI voice conversion (maybe, needs a GPU)
 
+## Install
+
+There are no downloadable installers yet. The install scripts build Kavox from source and install it for your user only, with no admin rights needed. The first build takes a few minutes.
+
+### Windows 10 and 11
+
+1. Install [VB-CABLE](https://vb-audio.com/Cable/), the free virtual cable Kavox plays into so Discord and games can hear your sounds. Unzip it, right-click `VBCABLE_Setup_x64.exe`, choose **Run as administrator**, click **Install Driver**, and restart if asked.
+2. Open PowerShell and run:
+
+   ```powershell
+   git clone https://github.com/Aitemaa/Kavox.git
+   cd Kavox
+   powershell -ExecutionPolicy Bypass -File scripts\install.ps1 -InstallDeps
+   ```
+
+   `-InstallDeps` uses winget to install whatever is missing: Rust, Node.js and the Visual Studio C++ build tools. If it installs anything, open a new PowerShell window, `cd` back into the Kavox folder, and run the same command without `-InstallDeps`.
+
+   No git? On GitHub, choose **Code → Download ZIP**, unzip it, and run the script from that folder.
+3. Kavox opens when the install finishes and walks you through setup. Next time, start it from the Start menu.
+
+Kavox goes into `%LOCALAPPDATA%\Programs\Kavox`, and `kavoxctl` is on your PATH in new terminal windows.
+
+To uninstall:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\install.ps1 -Uninstall
+```
+
+### Linux
+
+```sh
+git clone https://github.com/Aitemaa/Kavox.git
+cd Kavox
+./scripts/install.sh --deps
+```
+
+`--deps` installs build dependencies with pacman, apt or dnf, and asks for your password. Leave it off if you already have Rust 1.88+, Node.js 20.19+ and the development packages for webkit2gtk-4.1 and libpulse.
+
+This puts `kavox` and `kavoxctl` in `~/.local/bin` and adds Kavox to your app launcher. Set `PREFIX` to install somewhere else. Kavox needs PulseAudio, or PipeWire with pipewire-pulse. It creates its own "Kavox Mic" while it runs, so there's no driver to install.
+
+To uninstall, run `./scripts/install.sh --uninstall`. Your sounds and settings stay in `~/.config/io.github.aitemaa.kavox` and `~/.local/share/io.github.aitemaa.kavox` until you delete them.
+
+### Updating and packages
+
+To update on either platform, run `git pull` in the Kavox folder and run the install script again.
+
+To build distributable packages instead, run `npm install`, then `npx tauri build`. Installers land in `target/release/bundle/`: NSIS on Windows; `.deb`, `.rpm` and AppImage on Linux.
+
 ## Development
 
-You need Rust (stable) and Node.js 22+.
+You need Rust 1.88+ and Node.js 20.19+.
 
 - **Linux:** `webkit2gtk-4.1`, `libpulse` (PulseAudio, or PipeWire with pipewire-pulse) and `libayatana-appindicator` for the tray.
 - **Windows:** WebView2 (built into Windows 11) and [VB-CABLE](https://vb-audio.com/Cable/) to hear sounds in voice apps.
