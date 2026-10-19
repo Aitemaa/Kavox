@@ -3,6 +3,8 @@ name = "kavoxctl"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [dependencies]
 kavox-ipc = { version = "0.0.0", path = "../kavox-ipc" }

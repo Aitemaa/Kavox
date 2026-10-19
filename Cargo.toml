@@ -6,6 +6,8 @@ members = ["crates/*", "src-tauri"]
 version = "0.0.0"
 edition = "2024"
 publish = false
+license = "GPL-3.0-or-later"
+repository = "https://github.com/Aitemaa/Kavox"
 
 [profile.release]
 strip = true

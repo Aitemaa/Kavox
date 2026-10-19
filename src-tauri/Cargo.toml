@@ -3,6 +3,8 @@ name = "kavox"
 version = "0.1.0"
 edition.workspace = true
 publish.workspace = true
+license.workspace = true
+repository.workspace = true
 description = "Free soundboard with a virtual microphone"
 
 [lib]

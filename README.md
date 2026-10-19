@@ -7,6 +7,7 @@
   <img src="https://img.shields.io/badge/built%20with-Rust%20%2B%20Tauri-262626?style=flat-square&labelColor=0a0a0a" alt="Built with Rust + Tauri">
   <img src="https://img.shields.io/badge/status-early%20stage-e8262d?style=flat-square&labelColor=0a0a0a" alt="Status: early stage">
   <img src="https://img.shields.io/badge/price-free-262626?style=flat-square&labelColor=0a0a0a" alt="Price: free">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-262626?style=flat-square&labelColor=0a0a0a" alt="License: GPL-3.0"></a>
 </p>
 
 <p align="center">
@@ -14,18 +15,19 @@
   <a href="#how-it-works">How it works</a> ·
   <a href="#status">Roadmap</a> ·
   <a href="docs/PRD.md">PRD</a> ·
-  <a href="docs/TECH.md">Tech design</a>
+  <a href="docs/TECH.md">Tech design</a> ·
+  <a href="#license">License</a>
 </p>
 
 ---
 
-A free, open-source soundboard and voice changer, built as an alternative to Voicemod.
+A free, open-source soundboard and voice changer for Windows and Linux.
 
 Kavox = **Ka**rel + **vox** (Latin for "voice").
 
 ## What this repo is
 
-Voicemod gates most of its soundboard and voice effects behind a paid plan. Kavox aims to give you the same core features with no payment or account:
+Most soundboard and voice changer apps keep their best features behind a subscription. Kavox aims to give you the core features with no payment or account:
 
 - **Soundboard**: play audio clips into calls, games and streams with global hotkeys.
 - **Virtual microphone**: apps like Discord, OBS and games pick "Kavox" as their mic and hear your real voice mixed with the clips.
@@ -140,3 +142,11 @@ Other tools:
 ## Related tools
 
 If you want something that works today on Linux: Soundux (soundboard), EasyEffects (mic effects) and qpwgraph/Helvum (routing).
+
+## License
+
+Kavox is free software. You can use, change and share it under the [GNU General Public License v3.0 or later](LICENSE). If you share a changed version, you have to publish its source code under the same license.
+
+Copyright © 2026 Ignatius Karel.
+
+Discord, OBS, VB-CABLE, VoiceMeeter and other product names mentioned here are trademarks of their owners. Kavox is an independent project and isn't affiliated with or endorsed by any of them.

@@ -14,11 +14,11 @@
 
 Kavox is a free desktop app that plays sound clips into your microphone, so people in Discord, games, OBS or any voice app hear them alongside your voice. You set up a grid of sounds, bind hotkeys, and press them mid-call.
 
-It replaces the soundboard part of Voicemod and Soundpad without a paywall, account or telemetry.
+It covers what people use paid soundboard apps for, without a paywall, account or telemetry.
 
 ## 2. Problem
 
-- Voicemod limits its free soundboard and pushes users to a subscription. Soundpad is paid.
+- Popular soundboard apps limit their free tier or are paid outright.
 - Free options are scattered. On Windows, users stitch together VB-CABLE, VoiceMeeter and a media player, which is fiddly and easy to break (for example, all system audio ending up in the mic).
 - On Linux, Soundux was the main option and is no longer maintained.
 

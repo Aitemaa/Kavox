@@ -301,6 +301,7 @@ function AboutTab() {
             Version {version} for {platform === 'windows' ? 'Windows' : platform === 'linux' ? 'Linux' : platform}. Free, no
             account, no tracking.
           </p>
+          <p className="field-hint">Open source under the GPL-3.0 license, provided without any warranty.</p>
         </div>
       </div>
       <div className="button-row">

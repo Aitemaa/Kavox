@@ -344,7 +344,7 @@ Many Discord users use push-to-talk, so sounds aren't transmitted unless the key
 - When the first voice starts on the virtual renderer, the control thread sends key-down via `SendInput` with `KEYEVENTF_SCANCODE`. When the last voice ends, it waits 200 ms (Discord's release delay can clip tails) and sends key-up.
 - Before sending key-up, check `GetAsyncKeyState`; if the user is physically holding the key, skip it.
 - Off by default, with a note that some anti-cheat systems may react to synthetic input.
-- To verify during M5: Discord's keybind listener accepts injected events (Voicemod and Soundpad ship this feature, so it is expected to work).
+- To verify during M5: Discord's keybind listener accepts injected events (existing soundboard apps ship this feature, so it is expected to work).
 
 ## 9. Persistence
 
