@@ -142,7 +142,7 @@ function Pad({ sound }: { sound: Sound }) {
         aria-label={`${sound.name}${sound.hotkey ? `, hotkey ${sound.hotkey}` : ''}`}
         {...listeners}
       >
-        <span className="pad-led" aria-hidden="true" />
+        <span className="pad-dot" aria-hidden="true" />
         <span className="pad-name">{sound.name}</span>
         <span className="pad-foot">
           {sound.hotkey ? <Keycaps hotkey={sound.hotkey} small /> : <span />}

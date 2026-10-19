@@ -377,7 +377,7 @@ Stored with a `boards` array from v0.1 so multi-board support (P1) needs no migr
       "durationMs": 2310,
       "volume": 1.0,
       "normGainDb": 0.0,
-      "color": "#7c3aed",
+      "color": "#e8262d",
       "hotkey": "Ctrl+1",
       "retrigger": "restart",
       "loop": false

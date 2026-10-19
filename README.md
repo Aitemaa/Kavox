@@ -3,10 +3,10 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux-0e0b1a?style=flat-square" alt="Platform: Windows | Linux">
-  <img src="https://img.shields.io/badge/built%20with-Rust%20%2B%20Tauri-7c3aed?style=flat-square" alt="Built with Rust + Tauri">
-  <img src="https://img.shields.io/badge/status-early%20stage-06b6d4?style=flat-square" alt="Status: early stage">
-  <img src="https://img.shields.io/badge/price-free-22c55e?style=flat-square" alt="Price: free">
+  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux-262626?style=flat-square&labelColor=0a0a0a" alt="Platform: Windows | Linux">
+  <img src="https://img.shields.io/badge/built%20with-Rust%20%2B%20Tauri-262626?style=flat-square&labelColor=0a0a0a" alt="Built with Rust + Tauri">
+  <img src="https://img.shields.io/badge/status-early%20stage-e8262d?style=flat-square&labelColor=0a0a0a" alt="Status: early stage">
+  <img src="https://img.shields.io/badge/price-free-262626?style=flat-square&labelColor=0a0a0a" alt="Price: free">
 </p>
 
 <p align="center">

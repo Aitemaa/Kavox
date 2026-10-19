@@ -1,14 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, type Board } from '../api';
 import { askConfirm, openSettings, pickAndImport, run, useStore } from '../store';
-import { Icon, LogoMark } from './ui';
+import { Icon, LogoMark, Wordmark } from './ui';
 
 export function TopBar() {
   return (
     <header className="topbar">
       <div className="brand">
         <LogoMark />
-        <span className="wordmark">Kavox</span>
+        <Wordmark />
       </div>
       <BoardTabs />
       <div className="topbar-actions">

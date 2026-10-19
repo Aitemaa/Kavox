@@ -1,74 +1,23 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 320" width="1280" height="320" role="img" aria-label="Kavox: free soundboard and voice changer">
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#0e0b1a"/>
-      <stop offset="1" stop-color="#17112e"/>
-    </linearGradient>
-    <linearGradient id="brand" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#7c3aed"/>
-      <stop offset="1" stop-color="#06b6d4"/>
-    </linearGradient>
-    <linearGradient id="word" gradientUnits="userSpaceOnUse" x1="450" y1="0" x2="700" y2="0">
-      <stop offset="0" stop-color="#a78bfa"/>
-      <stop offset="1" stop-color="#22d3ee"/>
-    </linearGradient>
-    <linearGradient id="wave" gradientUnits="userSpaceOnUse" x1="864" y1="0" x2="1194" y2="0">
-      <stop offset="0" stop-color="#7c3aed"/>
-      <stop offset="1" stop-color="#06b6d4"/>
-    </linearGradient>
-    <radialGradient id="glow">
-      <stop offset="0" stop-color="#7c3aed" stop-opacity="0.45"/>
-      <stop offset="1" stop-color="#7c3aed" stop-opacity="0"/>
-    </radialGradient>
-  </defs>
-
-  <rect width="1280" height="320" rx="24" fill="url(#bg)"/>
-  <rect x="0.5" y="0.5" width="1279" height="319" rx="23.5" fill="none" stroke="#ffffff" stroke-opacity="0.08"/>
-
-  <circle cx="160" cy="160" r="140" fill="url(#glow)"/>
-  <rect x="80" y="80" width="160" height="160" rx="36" fill="url(#brand)"/>
-  <g fill="#ffffff">
-    <rect x="105" y="140" width="14" height="40" rx="7"/>
-    <rect x="129" y="122" width="14" height="76" rx="7"/>
-    <rect x="153" y="106" width="14" height="108" rx="7"/>
-    <rect x="177" y="122" width="14" height="76" rx="7"/>
-    <rect x="201" y="140" width="14" height="40" rx="7"/>
+  <defs><filter id="grain" x="-5%" y="-5%" width="110%" height="110%" color-interpolation-filters="sRGB"><feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3" seed="4" result="noise"/><feColorMatrix in="noise" type="matrix" values="0.33 0.33 0.33 0 0 0.33 0.33 0.33 0 0 0.33 0.33 0.33 0 0 0 0 0 0 1" result="grey"/><feComponentTransfer in="grey" result="mask"><feFuncR type="linear" slope="0.883" intercept="0.443"/><feFuncG type="linear" slope="0.883" intercept="0.443"/><feFuncB type="linear" slope="0.883" intercept="0.443"/></feComponentTransfer><feComposite in="SourceGraphic" in2="mask" operator="arithmetic" k1="1" k2="0" k3="0" k4="0"/></filter></defs>
+  <rect width="1280" height="320" rx="24" fill="#141414"/>
+  <rect x="255.5" y="77.5" width="165" height="165" rx="37.125" fill="#222222"/>
+  <g filter="url(#grain)">
+    <g transform="translate(250 72) scale(0.171875)" stroke="#ffffff" stroke-width="72" stroke-linecap="round">
+      <line x1="327.4" y1="268.0" x2="327.4" y2="756.0"/>
+      <line x1="497.2" y1="445.4" x2="688.6" y2="268.0"/>
+      <line x1="497.2" y1="578.6" x2="688.6" y2="756.0"/>
+    </g>
+    <g transform="translate(491.6 104) scale(1.12)" stroke="#ffffff" stroke-width="10" stroke-linecap="round" stroke-linejoin="round">
+      <line x1="0.0" y1="0.0" x2="0.0" y2="100.0"/>
+      <line x1="24.1" y1="41.3" x2="74.0" y2="0.0"/>
+      <line x1="24.1" y1="58.7" x2="74.0" y2="100.0"/>
+      <polyline points="110,100 149,0 188,100" fill="none"/>
+      <polyline points="188,0 227,100 266,0" fill="none"/>
+      <circle cx="339" cy="50" r="50" fill="none"/>
+      <path d="M409 0 475 100M475 0 409 100"/>
+    </g>
   </g>
-
-  <g font-family="Inter, 'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif">
-    <text x="288" y="168" font-size="112" font-weight="800" letter-spacing="4"><tspan fill="#fafafa">KA</tspan><tspan fill="url(#word)">VOX</tspan></text>
-    <text x="294" y="222" font-size="30" font-weight="500" fill="#d4d4d8">Free soundboard &amp; voice changer</text>
-    <text x="294" y="262" font-size="18" font-weight="600" letter-spacing="2" fill="#8b8b9a">NO PAYWALL · NO ACCOUNT · NO TELEMETRY</text>
-  </g>
-
-  <g fill="url(#wave)" opacity="0.4">
-    <rect x="864" y="150" width="6" height="20" rx="3"/>
-    <rect x="876" y="142" width="6" height="36" rx="3"/>
-    <rect x="888" y="131" width="6" height="58" rx="3"/>
-    <rect x="900" y="140" width="6" height="40" rx="3"/>
-    <rect x="912" y="124" width="6" height="72" rx="3"/>
-    <rect x="924" y="112" width="6" height="96" rx="3"/>
-    <rect x="936" y="128" width="6" height="64" rx="3"/>
-    <rect x="948" y="105" width="6" height="110" rx="3"/>
-    <rect x="960" y="90" width="6" height="140" rx="3"/>
-    <rect x="972" y="115" width="6" height="90" rx="3"/>
-    <rect x="984" y="100" width="6" height="120" rx="3"/>
-    <rect x="996" y="80" width="6" height="160" rx="3"/>
-    <rect x="1008" y="95" width="6" height="130" rx="3"/>
-    <rect x="1020" y="110" width="6" height="100" rx="3"/>
-    <rect x="1032" y="85" width="6" height="150" rx="3"/>
-    <rect x="1044" y="75" width="6" height="170" rx="3"/>
-    <rect x="1056" y="100" width="6" height="120" rx="3"/>
-    <rect x="1068" y="115" width="6" height="90" rx="3"/>
-    <rect x="1080" y="95" width="6" height="130" rx="3"/>
-    <rect x="1092" y="110" width="6" height="100" rx="3"/>
-    <rect x="1104" y="125" width="6" height="70" rx="3"/>
-    <rect x="1116" y="112" width="6" height="96" rx="3"/>
-    <rect x="1128" y="130" width="6" height="60" rx="3"/>
-    <rect x="1140" y="138" width="6" height="44" rx="3"/>
-    <rect x="1152" y="125" width="6" height="70" rx="3"/>
-    <rect x="1164" y="140" width="6" height="40" rx="3"/>
-    <rect x="1176" y="146" width="6" height="28" rx="3"/>
-    <rect x="1188" y="151" width="6" height="18" rx="3"/>
-  </g>
+  <g transform="translate(250 72) scale(0.171875)"><circle cx="425.4" cy="512.0" r="36" fill="#e8262d"/></g>
+  <g transform="translate(491.6 104) scale(1.12)"><circle cx="13.6" cy="50.0" r="5" fill="#e8262d"/></g>
 </svg>

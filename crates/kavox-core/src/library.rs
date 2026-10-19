@@ -13,8 +13,9 @@ use crate::error::{Error, Result};
 use crate::persist::Versioned;
 
 pub const LIBRARY_SCHEMA: u32 = 1;
+/// Pad dot colours, readable on dark and light pads. Keep in sync with PALETTE in src/api.ts.
 pub const PALETTE: &[&str] = &[
-    "#7c3aed", "#2563eb", "#0891b2", "#059669", "#65a30d", "#d97706", "#dc2626", "#db2777",
+    "#e8262d", "#f0a020", "#c9ad7a", "#1fb5a0", "#3b9cff", "#f0607e", "#a3a29d", "#7d8c5a",
 ];
 const MAX_NAME_CHARS: usize = 60;
 

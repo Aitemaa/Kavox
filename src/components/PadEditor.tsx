@@ -45,7 +45,7 @@ function Editor({ sound }: { sound: Sound }) {
   return (
     <aside className="drawer" aria-label={`Edit ${sound.name}`} style={{ '--pad': sound.color } as CSSProperties}>
       <header className="drawer-head">
-        <span className="drawer-led" aria-hidden="true" />
+        <span className="drawer-dot" aria-hidden="true" />
         <h2>Edit sound</h2>
         <button type="button" className="icon-button" aria-label="Close" onClick={close}>
           <Icon name="close" />

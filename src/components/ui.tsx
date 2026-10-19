@@ -131,23 +131,77 @@ export function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
   );
 }
 
+const BRAND_RED = '#e8262d';
+
+/** The logo's K (as in assets/icon.svg): a stem, a dot where the arms meet, then the arms. Dash, dot, dash is K in Morse code. */
+function logoK(x: number, y: number, h: number, w: number) {
+  const gap = 0.36 * w;
+  const tip = x + 0.74 * h;
+  const dot = { cx: x + w + gap, cy: y + h / 2, r: w / 2 };
+  const arms = [y, y + h].map((ty) => {
+    const n = Math.hypot(tip - dot.cx, ty - dot.cy);
+    const s = w + gap;
+    return { x1: dot.cx + ((tip - dot.cx) / n) * s, y1: dot.cy + ((ty - dot.cy) / n) * s, x2: tip, y2: ty };
+  });
+  return { lines: [{ x1: x, y1: y, x2: x, y2: y + h }, ...arms], dot };
+}
+
+const MARK_K = logoK(9.85, 7.87, 16.27, 2.4);
+const WORD_K = logoK(0, 0, 100, 10);
+
+/** Speckles the logo's white strokes like the icon: grey noise multiplied in. `frequency` is per user unit (~0.65 per pixel). */
+function Grain({ id, frequency }: { id: string; frequency: number }) {
+  const ramp = { type: 'linear', slope: 0.883, intercept: 0.443 } as const;
+  return (
+    <filter id={id} x="-5%" y="-5%" width="110%" height="110%" colorInterpolationFilters="sRGB">
+      <feTurbulence type="fractalNoise" baseFrequency={frequency} numOctaves={3} seed={4} result="noise" />
+      <feColorMatrix in="noise" type="matrix" values="0.33 0.33 0.33 0 0 0.33 0.33 0.33 0 0 0.33 0.33 0.33 0 0 0 0 0 0 1" result="grey" />
+      <feComponentTransfer in="grey" result="mask">
+        <feFuncR {...ramp} />
+        <feFuncG {...ramp} />
+        <feFuncB {...ramp} />
+      </feComponentTransfer>
+      <feComposite in="SourceGraphic" in2="mask" operator="arithmetic" k1={1} k2={0} k3={0} k4={0} />
+    </filter>
+  );
+}
+
 export function LogoMark({ size = 28 }: { size?: number }) {
+  const grain = `logo-grain${useId().replace(/:/g, '')}`;
   return (
     <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true" className="logo-mark">
       <defs>
-        <linearGradient id="kavox-logo" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#7c3aed" />
-          <stop offset="1" stopColor="#06b6d4" />
-        </linearGradient>
+        <Grain id={grain} frequency={(0.65 * size) / 32} />
       </defs>
-      <rect width="32" height="32" rx="8" fill="url(#kavox-logo)" />
-      <g fill="#fff">
-        <rect x="5.5" y="12.5" width="2.6" height="7" rx="1.3" />
-        <rect x="10" y="9" width="2.6" height="14" rx="1.3" />
-        <rect x="14.7" y="6" width="2.6" height="20" rx="1.3" />
-        <rect x="19.4" y="9" width="2.6" height="14" rx="1.3" />
-        <rect x="23.9" y="12.5" width="2.6" height="7" rx="1.3" />
+      <rect width="32" height="32" rx="7.2" fill="#222" />
+      <g stroke="#fff" strokeWidth={2.4} strokeLinecap="round" filter={`url(#${grain})`}>
+        {MARK_K.lines.map((l, i) => (
+          <line key={i} {...l} />
+        ))}
       </g>
+      <circle {...MARK_K.dot} fill={BRAND_RED} />
+    </svg>
+  );
+}
+
+/** Line-drawn "KAVOX" (as in assets/banner.svg) on a 100-unit cap height, kerned by eye. */
+export function Wordmark({ height = 16 }: { height?: number }) {
+  const grain = `word-grain${useId().replace(/:/g, '')}`;
+  return (
+    <svg className="wordmark" width={(height * 485) / 110} height={height} viewBox="-5 -5 485 110" role="img" aria-label="Kavox">
+      <defs>
+        <Grain id={grain} frequency={(0.65 * height) / 110} />
+      </defs>
+      <g fill="none" stroke="currentColor" strokeWidth={10} strokeLinecap="round" strokeLinejoin="round" filter={`url(#${grain})`}>
+        {WORD_K.lines.map((l, i) => (
+          <line key={i} {...l} />
+        ))}
+        <polyline points="110,100 149,0 188,100" />
+        <polyline points="188,0 227,100 266,0" />
+        <circle cx={339} cy={50} r={50} />
+        <path d="M409 0 475 100M475 0 409 100" />
+      </g>
+      <circle {...WORD_K.dot} fill={BRAND_RED} />
     </svg>
   );
 }
@@ -401,7 +455,7 @@ export function Fader({
   const position = Math.sqrt(Math.max(0, value) / max);
   return (
     <div className="fader">
-      {level !== undefined && <div className="fader-level" style={{ '--fill': meterFill(level) } as CSSProperties} />}
+      {level !== undefined && <MeterFill className="fader-level" level={level} />}
       <input
         type="range"
         min={0}
@@ -418,9 +472,15 @@ export function Fader({
 export function LevelBar({ level, label }: { level: number; label: string }) {
   return (
     <div className="level-bar" role="meter" aria-label={label} aria-valuemin={0} aria-valuemax={1} aria-valuenow={meterFill(level)}>
-      <div className="level-bar-fill" style={{ '--fill': meterFill(level) } as CSSProperties} />
+      <MeterFill className="level-bar-fill" level={level} />
     </div>
   );
+}
+
+/** The lit part of a meter; it turns red near 0 dBFS, where the limiter starts working. */
+function MeterFill({ className, level }: { className: string; level: number }) {
+  const fill = meterFill(level);
+  return <div className={`${className} ${fill > 0.95 ? 'is-hot' : ''}`} style={{ '--fill': fill } as CSSProperties} />;
 }
 
 /** Peak (0–1) to meter fill on a −60…0 dBFS scale. */

@@ -167,7 +167,8 @@ export function errorMessage(error: unknown): string {
   return String(error);
 }
 
-export const PALETTE = ['#7c3aed', '#2563eb', '#0891b2', '#059669', '#65a30d', '#d97706', '#dc2626', '#db2777'];
+// Pad dot colours, readable on both the dark and light pad tiles. Keep in sync with PALETTE in crates/kavox-core/src/library.rs.
+export const PALETTE = ['#e8262d', '#f0a020', '#c9ad7a', '#1fb5a0', '#3b9cff', '#f0607e', '#a3a29d', '#7d8c5a'];
 export const AUDIO_EXTENSIONS = ['wav', 'mp3', 'ogg', 'oga', 'flac'];
 export const VB_CABLE_URL = 'https://vb-audio.com/Cable/';
 export const REPO_URL = 'https://github.com/Aitemaa/Kavox';
