@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use kavox_core::{
     ApiError, AppSettings, AudioSettings, Board, DeviceList, Error, GlobalHotkey, Snapshot, Sound,
-    SoundPatch, StreamRole, clip, prepare_import,
+    SoundPatch, StreamRole, VoiceSettings, clip, prepare_import,
 };
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State, ipc::Invoke};
@@ -30,6 +30,9 @@ pub fn handler() -> impl Fn(Invoke) -> bool + Send + Sync + 'static {
         stop_sound,
         stop_all,
         set_mic_muted,
+        set_voice_changer,
+        set_voice_enabled,
+        set_voice_hotkey,
         set_sound_hotkey,
         set_global_hotkey,
         play_test_tone,
@@ -211,6 +214,44 @@ fn stop_all(state: State<AppState>) {
 #[tauri::command]
 fn set_mic_muted(state: State<AppState>, muted: Option<bool>) -> bool {
     state.controller.lock().set_mic_muted(muted)
+}
+
+#[tauri::command]
+fn set_voice_changer(state: State<AppState>, voice: VoiceSettings) {
+    state.controller.lock().set_voice_changer(voice);
+}
+
+#[tauri::command]
+fn set_voice_enabled(state: State<AppState>, enabled: Option<bool>) -> bool {
+    state.controller.lock().set_voice_enabled(enabled)
+}
+
+#[tauri::command]
+fn set_voice_hotkey(
+    app: AppHandle,
+    state: State<AppState>,
+    preset: String,
+    hotkey: Option<String>,
+) -> CmdResult<()> {
+    if let Some(h) = &hotkey {
+        hotkeys::validate(h)
+            .map_err(|e| api_error("Invalid", format!("{h} can't be used as a hotkey: {e}")))?;
+    }
+    let previous = state
+        .controller
+        .lock()
+        .settings()
+        .voice
+        .hotkeys
+        .get(&preset)
+        .cloned();
+    state
+        .controller
+        .lock()
+        .set_voice_hotkey(&preset, hotkey.clone())?;
+    apply_or_revert(&app, hotkey, || {
+        state.controller.lock().set_voice_hotkey(&preset, previous)
+    })
 }
 
 /// Saves the binding, then asks the OS for it; if the OS refuses, the old binding is restored.

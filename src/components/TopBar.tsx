@@ -1,22 +1,37 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, type Board } from '../api';
-import { askConfirm, openSettings, pickAndImport, run, useStore } from '../store';
-import { Icon, LogoMark, Wordmark } from './ui';
+import { askConfirm, openSettings, pickAndImport, run, setView, useStore, type View } from '../store';
+import { Icon, LogoMark, Segmented, Wordmark } from './ui';
 
 export function TopBar() {
+  const view = useStore((s) => s.view);
+  const voiceLive = useStore((s) => s.settings.voice?.enabled && s.settings.voice.preset !== 'normal');
   return (
     <header className="topbar">
       <div className="brand">
         <LogoMark />
         <Wordmark />
       </div>
-      <BoardTabs />
+      <Segmented<View>
+        label="View"
+        value={view}
+        onChange={setView}
+        options={[
+          { value: 'sounds', label: 'Sounds', icon: 'play' },
+          { value: 'voice', label: voiceLive ? 'Voice · on' : 'Voice', icon: 'voice' },
+        ]}
+      />
+      {view === 'sounds' ? <BoardTabs /> : <div className="boards" />}
       <div className="topbar-actions">
-        <SearchBox />
-        <button type="button" className="button button-primary" onClick={() => void pickAndImport()}>
-          <Icon name="plus" />
-          <span className="hide-narrow">Add sounds</span>
-        </button>
+        {view === 'sounds' && (
+          <>
+            <SearchBox />
+            <button type="button" className="button button-primary" onClick={() => void pickAndImport()}>
+              <Icon name="plus" />
+              <span className="hide-narrow">Add sounds</span>
+            </button>
+          </>
+        )}
         <button type="button" className="icon-button" aria-label="Settings" onClick={() => openSettings()}>
           <Icon name="gear" />
         </button>

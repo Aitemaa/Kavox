@@ -18,15 +18,25 @@ pub fn mic_channel(meters: Arc<Meters>) -> (MicSink, MicInput) {
     (
         MicSink {
             ring: producer,
+            tap: None,
             meters,
         },
         MicInput::new(consumer),
     )
 }
 
+/// Like `mic_channel`, with a second reader of the same samples (the monitor, for "hear myself").
+pub fn mic_channel_tapped(meters: Arc<Meters>) -> (MicSink, MicInput, MicInput) {
+    let (mut sink, input) = mic_channel(meters);
+    let (tap_producer, tap_consumer) = RingBuffer::new(RING_CAPACITY);
+    sink.tap = Some(tap_producer);
+    (sink, input, MicInput::new(tap_consumer))
+}
+
 /// Capture side: downmixes to mono, meters, and feeds the ring.
 pub struct MicSink {
     ring: Producer<f32>,
+    tap: Option<Producer<f32>>,
     meters: Arc<Meters>,
 }
 
@@ -45,6 +55,9 @@ impl MicSink {
             peak = peak.max(s.abs());
             // A full ring means the renderer stalled; dropping new samples is the cheapest recovery.
             let _ = self.ring.push(s);
+            if let Some(tap) = &mut self.tap {
+                let _ = tap.push(s);
+            }
         }
         self.meters.record(Meter::Mic, peak);
     }
@@ -194,6 +207,23 @@ mod tests {
                 "{ppm} ppm drifted: fill {min}..{max}"
             );
         }
+    }
+
+    #[test]
+    fn tap_reads_the_same_samples() {
+        let meters = Arc::new(Meters::default());
+        let (mut sink, mut a, mut b) = mic_channel_tapped(meters);
+        for input in [&mut a, &mut b] {
+            input.set_input_rate(48_000);
+            input.prepare(48_000);
+        }
+        let samples: Vec<f32> = (0..2000).map(|i| (i % 100) as f32 / 100.0).collect();
+        sink.push_interleaved(&samples, 1, |s| s);
+        let (mut out_a, mut out_b) = (vec![0f32; 480], vec![0f32; 480]);
+        a.read(&mut out_a);
+        b.read(&mut out_b);
+        assert_eq!(out_a, out_b);
+        assert!(out_a.iter().any(|&s| s != 0.0));
     }
 
     #[test]

@@ -108,6 +108,25 @@ const ICONS = {
       <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" />
     </>
   ),
+  voice: <path d="M4 10v4M8 6v12M12 3v18M16 8v8M20 11v2" />,
+  chipmunk: <path d="m6 11 6-6 6 6M6 18l6-6 6 6" />,
+  pixie: (
+    <>
+      <path d="m11 3 1.9 5.1L18 10l-5.1 1.9L11 17l-1.9-5.1L4 10l5.1-1.9z" />
+      <path d="M19 16v5M16.5 18.5h5" />
+    </>
+  ),
+  deep: <path d="m7 9 5 5 5-5M7 19h10" />,
+  giant: <path d="m6 6 6 6 6-6M6 13l6 6 6-6" />,
+  monster: <path d="M4 10c0-3.3 3.6-5.5 8-5.5s8 2.2 8 5.5v3.5l-2.5 3-2.5-3-3 3-3-3-2.5 3L4 13.5z" />,
+  wobbly: <path d="M3 12c1.7-6 3.3-6 5 0s3.3 6 5 0 3.3-6 5 0 1.7 3 3 3" />,
+  drunk: <path d="M8 4h8l-.9 6.5a3.1 3.1 0 0 1-6.2 0zM12 13.6V20M8.5 20h7" />,
+  alien: (
+    <>
+      <path d="M12 3c4.8 0 8 3.8 8 8s-3.8 7.5-8 10c-4.2-2.5-8-5.8-8-10s3.2-8 8-8z" />
+      <path d="m8 10.5 2.5 1.5M16 10.5 13.5 12" />
+    </>
+  ),
 };
 
 export type IconName = keyof typeof ICONS;
@@ -464,6 +483,45 @@ export function Fader({
         aria-label={label}
         aria-valuetext={`${Math.round(value * 100)}%`}
         onChange={(e) => onChange(Number((max * (Number(e.target.value) / 1000) ** 2).toFixed(3)))}
+      />
+    </div>
+  );
+}
+
+/** Linear slider for values that are not gains, e.g. pitch. */
+export function Slider({
+  label,
+  value,
+  min,
+  max,
+  step = 1,
+  center,
+  valueText,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step?: number;
+  /** Draws a tick at this value. */
+  center?: number;
+  valueText?: string;
+  onChange: (value: number) => void;
+}) {
+  const tick = center === undefined ? undefined : ((center - min) / (max - min)) * 100;
+  return (
+    <div className="fader slider" style={tick === undefined ? undefined : ({ '--tick': `${tick}%` } as CSSProperties)}>
+      {tick !== undefined && <span className="slider-tick" aria-hidden="true" />}
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        aria-label={label}
+        aria-valuetext={valueText}
+        onChange={(e) => onChange(Number(e.target.value))}
       />
     </div>
   );

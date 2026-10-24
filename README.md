@@ -31,7 +31,7 @@ Most soundboard and voice changer apps keep their best features behind a subscri
 
 - **Soundboard**: play audio clips into calls, games and streams with global hotkeys.
 - **Virtual microphone**: apps like Discord, OBS and games pick "Kavox" as their mic and hear your real voice mixed with the clips.
-- **Voice effects** (later): pitch shift, robot, reverb, echo and similar real-time effects.
+- **Voice changer**: change the pitch of your voice live with fun presets (Chipmunk, Giant, Wobbly and more) or a pitch dial. Robot, reverb and echo come later.
 
 ## How it works
 
@@ -57,13 +57,14 @@ Details are in the [technical design](docs/TECH.md).
 Done:
 
 - **v0.1:** pads with drag-to-reorder, global hotkeys, mic passthrough with clock-drift correction, headphone monitor, setup wizard, tray, `kavoxctl` CLI
+- **Voice changer:** pitch presets and dial, hear-myself monitoring, a hotkey per voice, tray toggle
 - **From v0.2:** multiple boards, loudness normalization, loop mode, launch on login
 
 Next:
 
 1. Push-to-talk assist (Windows), Wayland global shortcuts portal, board export/import, auto-update
 2. Installers and code signing
-3. Basic voice effects (pitch, reverb, echo)
+3. More voice effects (robot, reverb, echo)
 4. AI voice conversion (maybe, needs a GPU)
 
 ## Install

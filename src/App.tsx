@@ -5,6 +5,7 @@ import { ConfirmDialog, DropOverlay, LoadError, StatusBanner, Toasts } from './c
 import { MixerStrip } from './components/MixerStrip';
 import { PadEditor } from './components/PadEditor';
 import { PadGrid } from './components/Pads';
+import { VoiceBoard } from './components/VoiceBoard';
 import { SettingsDialog } from './components/Settings';
 import { SetupWizard } from './components/SetupWizard';
 import { TopBar } from './components/TopBar';
@@ -14,6 +15,7 @@ export function App() {
   const loadError = useStore((s) => s.loadError);
   const theme = useStore((s) => s.settings.app?.theme);
   const editing = useStore((s) => s.editing !== null);
+  const view = useStore((s) => s.view);
 
   useEffect(() => {
     void init();
@@ -56,7 +58,7 @@ export function App() {
       <TopBar />
       <StatusBanner />
       <main className="board">
-        <PadGrid />
+        {view === 'voice' ? <VoiceBoard /> : <PadGrid />}
       </main>
       <PadEditor />
       <MixerStrip />

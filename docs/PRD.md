@@ -35,7 +35,7 @@ Users want one app that "just works": add sounds, press a key, friends hear it.
 
 ## 4. Non-goals (v0.x)
 
-- Voice effects (pitch, robot, reverb) and AI voice conversion. These come in a later feature.
+- Voice effects other than pitch (robot, reverb, echo) and AI voice conversion. These come in a later feature.
 - macOS and mobile.
 - An online sound library, marketplace or account system.
 - Shipping our own Windows audio driver. We depend on an existing virtual cable for now (see §10).
@@ -128,6 +128,8 @@ Priority: **P0** = required for v0.1, **P1** = v0.2, **P2** = later.
 | AUD-7 | P0 | Device unplug/replug recovery | Unplugging the headset doesn't crash; Kavox reconnects when it returns or falls back to default and notifies |
 | AUD-8 | P1 | Push-to-talk assist (Windows) | While a sound plays, Kavox holds the user's Discord PTT key so the sound is transmitted |
 | AUD-9 | P2 | Mic noise gate | Optional gate with threshold slider |
+| AUD-10 | P1 | Voice changer (pitch only) | A Voice view lists preset voices (Chipmunk, Deep, Wobbly and others) plus a pitch dial of ±12 semitones; the changed mic goes to the virtual device. Switching voice glides instead of jumping, and turning it on or off doesn't click |
+| AUD-11 | P1 | "Hear myself" | Optional, off by default: plays the changed voice in the monitor output. Respects mic mute |
 
 ### 7.4 Hotkeys and control
 
@@ -140,6 +142,7 @@ Priority: **P0** = required for v0.1, **P1** = v0.2, **P2** = later.
 | KEY-5 | P0 | Warn on risky bindings | Binding a plain letter/number key without modifiers shows a warning (it would be swallowed system-wide) |
 | KEY-6 | P0 | CLI control: `kavoxctl play <name or id>`, `kavoxctl stop`, `kavoxctl stop-all`, `kavoxctl mute` | Commands reach the running instance within 10 ms; used for Wayland compositor bindings and scripting |
 | KEY-7 | P1 | Wayland global shortcuts via the XDG GlobalShortcuts portal | Where the desktop supports it, hotkeys work without compositor config |
+| KEY-8 | P1 | Global hotkey per voice | Pressing it selects that voice and turns the changer on; pressing it again turns the changer off. Conflicts with pad and global hotkeys are rejected |
 
 ### 7.5 App shell
 
@@ -159,7 +162,7 @@ Priority: **P0** = required for v0.1, **P1** = v0.2, **P2** = later.
 | ID | Requirement | Target |
 |---|---|---|
 | NFR-1 | Trigger latency (hotkey press → audio leaves Kavox) | < 50 ms, p95 |
-| NFR-2 | Mic passthrough added latency | < 40 ms |
+| NFR-2 | Mic passthrough added latency | < 40 ms, plus about 12 ms on average (25 ms at most) while the voice changer is on |
 | NFR-3 | CPU while idle in tray | < 1% of one core |
 | NFR-4 | CPU while playing 4 sounds + mic | < 5% of one core on a 4-year-old laptop |
 | NFR-5 | Memory with 50 pads loaded | < 200 MB total |
@@ -193,6 +196,7 @@ Priority: **P0** = required for v0.1, **P1** = v0.2, **P2** = later.
 ```
 
 - Right-click (or long-press) a pad opens the pad editor drawer.
+- A **Sounds | Voice** switch in the top bar swaps the pad board for the Voice view: a tile per voice, the pitch dial, the Hear myself switch and a hotkeys section.
 - The bottom bar is always visible: mic meter and mute, the three volume sliders, Stop all, and the current output device with a status dot (green OK, yellow fallback, red no virtual device).
 
 ### 9.2 Pad editor (drawer)
@@ -249,7 +253,7 @@ LIB-8 normalization, LIB-9 boards, LIB-10 export/import, PLAY-7 loop, AUD-8 PTT 
 
 ### Later
 
-Trim, noise gate, M4A, localization (Bahasa Indonesia first), then the voice effects feature.
+Trim, noise gate, M4A, localization (Bahasa Indonesia first), then more voice effects (robot, reverb, echo).
 
 ## 13. Success metrics
 

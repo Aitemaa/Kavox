@@ -46,6 +46,16 @@ export interface AudioSettings {
   normalize: boolean;
 }
 
+export interface VoiceSettings {
+  enabled: boolean;
+  /** A voice id from `voices.ts`, `normal`, or `custom` (the pitch dial). */
+  preset: string;
+  semitones: number;
+  hearMyself: boolean;
+  /** Voice id to global hotkey. */
+  hotkeys: Record<string, string>;
+}
+
 export interface AppSettings {
   startMinimized: boolean;
   closeToTray: boolean;
@@ -58,6 +68,7 @@ export interface Settings {
   schema: number;
   audio: AudioSettings;
   hotkeys: { stopAll: string | null; toggleMute: string | null };
+  voice: VoiceSettings;
   app: AppSettings;
 }
 
@@ -148,6 +159,9 @@ export const api = {
   stopSound: (id: string) => invoke<void>('stop_sound', { id }),
   stopAll: () => invoke<void>('stop_all'),
   setMicMuted: (muted: boolean | null = null) => invoke<boolean>('set_mic_muted', { muted }),
+  setVoiceChanger: (voice: VoiceSettings) => invoke<void>('set_voice_changer', { voice }),
+  setVoiceEnabled: (enabled: boolean | null = null) => invoke<boolean>('set_voice_enabled', { enabled }),
+  setVoiceHotkey: (preset: string, hotkey: string | null) => invoke<void>('set_voice_hotkey', { preset, hotkey }),
   setSoundHotkey: (id: string, hotkey: string | null) => invoke<void>('set_sound_hotkey', { id, hotkey }),
   setGlobalHotkey: (which: GlobalHotkey, hotkey: string | null) => invoke<void>('set_global_hotkey', { which, hotkey }),
   playTestTone: (output: 'virtual' | 'monitor') => invoke<void>('play_test_tone', { output }),
