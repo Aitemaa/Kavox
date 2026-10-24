@@ -28,6 +28,10 @@ impl Smoothed {
         }
     }
 
+    pub fn current(&self) -> f32 {
+        self.current
+    }
+
     #[inline]
     pub fn next(&mut self) -> f32 {
         if self.remaining > 0 {

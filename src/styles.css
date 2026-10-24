@@ -177,6 +177,7 @@ code {
 .fader-level,
 .level-bar-fill,
 .pad-progress,
+.voice-slot.is-selected .voice-tile,
 .fader input[type='range']::-webkit-slider-thumb {
   background-color: var(--lit);
   background-image: var(--lit-grain);
@@ -827,6 +828,178 @@ kbd {
   border-color: var(--muted);
   background: none;
   color: var(--text);
+}
+
+/* ---------- Voice changer ---------- */
+
+.topbar .segmented {
+  align-self: center;
+  flex: none;
+}
+
+.voice-board {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  max-width: 920px;
+}
+
+.voice-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.voice-head h2 {
+  margin: 0 0 4px;
+  font-size: 20px;
+  font-weight: 600;
+  font-stretch: 104%;
+}
+
+.voice-head p {
+  margin: 0;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.voice-head .switch-field {
+  flex: none;
+}
+
+/* The switch already says what it is; only its label text goes. */
+.voice-head .field-text {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+.voice-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(156px, 1fr));
+  gap: 12px;
+}
+
+.voice-slot {
+  min-width: 0;
+}
+
+.voice-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  min-height: 132px;
+  padding: 34px 14px 13px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pad);
+  background: var(--surface);
+  text-align: left;
+  transition:
+    background-color 120ms ease-out,
+    border-color 120ms ease-out,
+    translate 60ms ease-out;
+}
+
+.voice-tile:hover {
+  background: var(--surface-2);
+}
+
+.voice-tile:active {
+  translate: 0 1px;
+}
+
+.voice-tile > .icon,
+.voice-icon {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: inline-flex;
+  color: var(--muted);
+}
+
+.voice-icon .icon {
+  transition: transform 200ms cubic-bezier(0.3, 1.6, 0.5, 1);
+}
+
+.voice-tile:hover .voice-icon .icon {
+  transform: rotate(-8deg) scale(1.12);
+}
+
+.voice-slot.is-selected .voice-tile,
+.voice-slot.is-selected .voice-icon,
+.voice-slot.is-selected .voice-tile > .icon,
+.voice-slot.is-selected .pad-info {
+  color: var(--on-lit);
+}
+
+.voice-slot.is-selected .pad-dot {
+  background: var(--on-lit);
+  opacity: 1;
+  animation: voice-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes voice-pulse {
+  50% {
+    box-shadow: 0 0 0 5px color-mix(in srgb, var(--on-lit) 18%, transparent);
+  }
+}
+
+.voice-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 24px 32px;
+  align-items: start;
+}
+
+.slider-tick {
+  position: absolute;
+  left: var(--tick);
+  top: 50%;
+  width: 2px;
+  height: 11px;
+  translate: -1px -50%;
+  border-radius: 1px;
+  background: var(--muted);
+  pointer-events: none;
+}
+
+.voice-hotkeys summary {
+  width: fit-content;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 560;
+  color: var(--muted);
+}
+
+.voice-hotkeys summary:hover {
+  color: var(--text);
+}
+
+.voice-hotkeys[open] summary {
+  margin-bottom: 8px;
+}
+
+.voice-hotkey-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px 24px;
+  margin-top: 14px;
+}
+
+@media (max-width: 720px) {
+  .voice-grid {
+    grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  }
+
+  .voice-controls {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .empty-search {

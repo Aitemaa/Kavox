@@ -19,7 +19,8 @@ use crate::engine::{self, Command, EngineEvent, Meter, Meters, MicInput, Rendere
 use crate::error::{Error, Result};
 use crate::library::{Board, Library, Retrigger, Sound, SoundPatch};
 use crate::persist;
-use crate::settings::{AppSettings, AudioSettings, Settings};
+use crate::settings::{AppSettings, AudioSettings, Settings, VoiceSettings};
+use crate::voice;
 
 const TICK: Duration = Duration::from_millis(33);
 const DEVICE_POLL: Duration = Duration::from_secs(2);
@@ -155,6 +156,7 @@ pub enum HotkeyAction {
     PlaySound(String),
     StopAll,
     ToggleMute,
+    SetVoicePreset(String),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -232,6 +234,8 @@ struct MicStream {
     stream: Box<dyn StreamHandle>,
     label: String,
     fallback: bool,
+    /// Whether the monitor also reads this mic ("hear myself").
+    tapped: bool,
     generation: u64,
 }
 
@@ -262,6 +266,7 @@ pub struct Core {
     mic: Option<MicStream>,
     /// Mic input waiting for a virtual renderer to be opened.
     pending_mic: Option<Box<MicInput>>,
+    pending_monitor_mic: Option<Box<MicInput>>,
     cache: ClipCache,
     loader: Loader,
     voices: BTreeMap<VoiceId, ActiveVoice>,
@@ -287,6 +292,7 @@ impl Core {
         let mut core = Self {
             settings: Settings {
                 audio: settings.value.audio.clone().sanitized(),
+                voice: settings.value.voice.clone().sanitized(),
                 ..settings.value
             },
             library: library.value,
@@ -301,6 +307,7 @@ impl Core {
             monitor: None,
             mic: None,
             pending_mic: None,
+            pending_monitor_mic: None,
             cache: ClipCache::default(),
             loader: Loader::new(),
             voices: BTreeMap::new(),
@@ -412,11 +419,60 @@ impl Core {
     pub fn set_mic_muted(&mut self, muted: Option<bool>) -> bool {
         let muted = muted.unwrap_or(!self.settings.audio.mic_muted);
         self.settings.audio.mic_muted = muted;
-        if let Some(out) = &mut self.virtual_out {
+        for out in [&mut self.virtual_out, &mut self.monitor]
+            .into_iter()
+            .flatten()
+        {
             let _ = out.handle.commands.push(Command::SetMicMuted(muted));
         }
         self.settings_changed();
         muted
+    }
+
+    /// Saves the voice changer state from the UI. Hotkeys have their own command, so they are kept as they are.
+    pub fn set_voice_changer(&mut self, mut changer: VoiceSettings) {
+        changer.hotkeys = std::mem::take(&mut self.settings.voice.hotkeys);
+        let hear_before = self.settings.voice.hear_myself;
+        self.settings.voice = changer.sanitized();
+        self.push_pitch();
+        if hear_before != self.settings.voice.hear_myself {
+            // The monitor's mic reader is created together with the mic stream, so re-open it.
+            self.ensure_streams();
+            self.streams_changed();
+        }
+        self.settings_changed();
+    }
+
+    /// `None` toggles. Returns the new state.
+    pub fn set_voice_enabled(&mut self, enabled: Option<bool>) -> bool {
+        let enabled = enabled.unwrap_or(!self.settings.voice.enabled);
+        self.settings.voice.enabled = enabled;
+        self.push_pitch();
+        self.settings_changed();
+        enabled
+    }
+
+    /// Hotkey behaviour: picks the voice and turns the changer on, or turns it off if that voice is already live.
+    pub fn toggle_voice_preset(&mut self, preset: &str) -> Result<bool> {
+        if voice::preset(preset).is_none() {
+            return Err(Error::Invalid(format!("unknown voice \"{preset}\"")));
+        }
+        let live = self.settings.voice.enabled && self.settings.voice.preset == preset;
+        self.settings.voice.preset = preset.to_owned();
+        self.settings.voice.enabled = !live;
+        self.push_pitch();
+        self.settings_changed();
+        Ok(!live)
+    }
+
+    fn push_pitch(&mut self) {
+        let params = self.settings.voice.pitch_params();
+        for out in [&mut self.virtual_out, &mut self.monitor]
+            .into_iter()
+            .flatten()
+        {
+            let _ = out.handle.commands.push(Command::SetPitch(params));
+        }
     }
 
     pub fn play_test_tone(&mut self, role: StreamRole) -> Result<()> {
@@ -639,7 +695,7 @@ impl Core {
         let hotkey = normalize_hotkey(hotkey);
         self.library.sound(id)?;
         if let Some(h) = &hotkey
-            && let Some(owner) = self.hotkey_owner(h, Some(id), None)
+            && let Some(owner) = self.hotkey_owner(h, Some(id), None, None)
         {
             return Err(Error::HotkeyConflict(h.clone(), owner));
         }
@@ -651,7 +707,7 @@ impl Core {
     pub fn set_global_hotkey(&mut self, which: GlobalHotkey, hotkey: Option<String>) -> Result<()> {
         let hotkey = normalize_hotkey(hotkey);
         if let Some(h) = &hotkey
-            && let Some(owner) = self.hotkey_owner(h, None, Some(which))
+            && let Some(owner) = self.hotkey_owner(h, None, Some(which), None)
         {
             return Err(Error::HotkeyConflict(h.clone(), owner));
         }
@@ -659,6 +715,24 @@ impl Core {
             GlobalHotkey::StopAll => self.settings.hotkeys.stop_all = hotkey,
             GlobalHotkey::ToggleMute => self.settings.hotkeys.toggle_mute = hotkey,
         }
+        self.settings_changed();
+        Ok(())
+    }
+
+    pub fn set_voice_hotkey(&mut self, preset: &str, hotkey: Option<String>) -> Result<()> {
+        if voice::preset(preset).is_none() {
+            return Err(Error::Invalid(format!("unknown voice \"{preset}\"")));
+        }
+        let hotkey = normalize_hotkey(hotkey);
+        if let Some(h) = &hotkey
+            && let Some(owner) = self.hotkey_owner(h, None, None, Some(preset))
+        {
+            return Err(Error::HotkeyConflict(h.clone(), owner));
+        }
+        match hotkey {
+            Some(h) => self.settings.voice.hotkeys.insert(preset.to_owned(), h),
+            None => self.settings.voice.hotkeys.remove(preset),
+        };
         self.settings_changed();
         Ok(())
     }
@@ -671,6 +745,13 @@ impl Core {
         globals
             .into_iter()
             .filter_map(|(h, action)| h.clone().map(|h| (h, action)))
+            .chain(
+                self.settings
+                    .voice
+                    .hotkeys
+                    .iter()
+                    .map(|(id, h)| (h.clone(), HotkeyAction::SetVoicePreset(id.clone()))),
+            )
             .chain(self.library.sounds.values().filter_map(|s| {
                 s.hotkey
                     .clone()
@@ -684,6 +765,7 @@ impl Core {
         hotkey: &str,
         except_sound: Option<&str>,
         except_global: Option<GlobalHotkey>,
+        except_preset: Option<&str>,
     ) -> Option<String> {
         let same =
             |h: &Option<String>| h.as_deref().is_some_and(|h| h.eq_ignore_ascii_case(hotkey));
@@ -694,6 +776,13 @@ impl Core {
             && same(&self.settings.hotkeys.toggle_mute)
         {
             return Some("Mute mic".into());
+        }
+        if let Some((id, _)) =
+            self.settings.voice.hotkeys.iter().find(|(id, h)| {
+                Some(id.as_str()) != except_preset && h.eq_ignore_ascii_case(hotkey)
+            })
+        {
+            return Some(format!("Voice: {}", voice::label(id)));
         }
         self.library
             .sounds
@@ -723,10 +812,10 @@ impl Core {
             let _ = commands.push(Command::SetMicMuted(audio.mic_muted));
         }
         if let Some(out) = &mut self.monitor {
-            let _ = out
-                .handle
-                .commands
-                .push(Command::SetSoundsGain(audio.sounds_to_monitor_gain));
+            let commands = &mut out.handle.commands;
+            let _ = commands.push(Command::SetSoundsGain(audio.sounds_to_monitor_gain));
+            let _ = commands.push(Command::SetMicGain(audio.mic_gain));
+            let _ = commands.push(Command::SetMicMuted(audio.mic_muted));
         }
         if old.normalize != audio.normalize {
             self.update_voice_gains(None);
@@ -790,7 +879,11 @@ impl Core {
                     .is_some_and(|d| self.devices.has_input(d));
             let starving =
                 self.virtual_out.as_ref().is_some_and(|v| !v.has_mic) && self.pending_mic.is_none();
-            if self.mic.is_none() || recover || starving {
+            let retap = self
+                .mic
+                .as_ref()
+                .is_some_and(|m| m.tapped != self.wants_tap());
+            if self.mic.is_none() || recover || starving || retap {
                 self.close_mic();
                 changed |= self.open_mic();
             }
@@ -821,6 +914,15 @@ impl Core {
             changed = true;
         }
 
+        // A monitor that was re-opened lost its mic reader along with the old stream; the mic makes a new one.
+        if self.wants_tap()
+            && self.mic.is_some()
+            && self.monitor.as_ref().is_some_and(|m| !m.has_mic)
+        {
+            self.close_mic();
+            changed |= self.open_mic();
+        }
+
         if changed {
             self.streams_changed();
         }
@@ -836,9 +938,13 @@ impl Core {
         let audio = &self.settings.audio;
         let (bus, mic) = match role {
             StreamRole::Virtual => (audio.sounds_to_mic_gain, self.pending_mic.take()),
-            _ => (audio.sounds_to_monitor_gain, None),
+            _ => (
+                audio.sounds_to_monitor_gain,
+                self.pending_monitor_mic.take(),
+            ),
         };
-        renderer.configure(bus, audio.mic_gain, audio.mic_muted, mic);
+        let pitch = self.settings.voice.pitch_params();
+        renderer.configure(bus, audio.mic_gain, audio.mic_muted, pitch, mic);
         let has_mic = renderer.has_mic();
         self.generation += 1;
         let generation = self.generation;
@@ -884,11 +990,11 @@ impl Core {
         let preferred = self.settings.audio.mic_device.clone();
         let opened = match self.try_open_mic(preferred.as_deref()) {
             Err(Error::DeviceNotFound(_)) if preferred.is_some() => {
-                self.try_open_mic(None).map(|(s, i)| (s, i, true))
+                self.try_open_mic(None).map(|(s, i, t)| (s, i, t, true))
             }
-            other => other.map(|(s, i)| (s, i, false)),
+            other => other.map(|(s, i, t)| (s, i, t, false)),
         };
-        let (stream, mut input, fallback) = match opened {
+        let (stream, mut input, tap, fallback) = match opened {
             Ok(opened) => opened,
             Err(e) => {
                 self.report_error(StreamRole::Mic, &e);
@@ -913,33 +1019,67 @@ impl Core {
         } else {
             self.pending_mic = Some(Box::new(input));
         }
+        let tapped = tap.is_some();
+        if let Some(mut tap) = tap {
+            tap.set_input_rate(stream.rate());
+            if let Some(out) = &mut self.monitor {
+                tap.prepare(out.rate);
+                out.has_mic = out
+                    .handle
+                    .commands
+                    .push(Command::SetMic(Some(Box::new(tap))))
+                    .is_ok();
+            } else {
+                self.pending_monitor_mic = Some(Box::new(tap));
+            }
+        }
         let label = self.devices.label(stream.device());
         tracing::info!("opened mic {} @ {} Hz", stream.device(), stream.rate());
         self.mic = Some(MicStream {
             stream,
             label,
             fallback,
+            tapped,
             generation: self.generation,
         });
         self.clear_error(StreamRole::Mic);
         true
     }
 
-    fn try_open_mic(&mut self, device: Option<&str>) -> Result<(Box<dyn StreamHandle>, MicInput)> {
-        let (sink, input) = engine::mic_channel(self.meters.clone());
+    /// The monitor only listens to the mic when "hear myself" is on and the monitor is enabled.
+    fn wants_tap(&self) -> bool {
+        self.settings.voice.hear_myself && self.settings.audio.monitor_enabled
+    }
+
+    #[allow(clippy::type_complexity)]
+    fn try_open_mic(
+        &mut self,
+        device: Option<&str>,
+    ) -> Result<(Box<dyn StreamHandle>, MicInput, Option<MicInput>)> {
+        let (sink, input, tap) = if self.wants_tap() {
+            let (sink, input, tap) = engine::mic_channel_tapped(self.meters.clone());
+            (sink, input, Some(tap))
+        } else {
+            let (sink, input) = engine::mic_channel(self.meters.clone());
+            (sink, input, None)
+        };
         self.generation += 1;
         let stream = self.backend.open_input(device, sink, self.error_fn())?;
-        Ok((stream, input))
+        Ok((stream, input, tap))
     }
 
     fn close_mic(&mut self) {
         self.mic = None;
         self.pending_mic = None;
-        if let Some(out) = &mut self.virtual_out
-            && out.has_mic
+        self.pending_monitor_mic = None;
+        for out in [&mut self.virtual_out, &mut self.monitor]
+            .into_iter()
+            .flatten()
         {
-            let _ = out.handle.commands.push(Command::SetMic(None));
-            out.has_mic = false;
+            if out.has_mic {
+                let _ = out.handle.commands.push(Command::SetMic(None));
+                out.has_mic = false;
+            }
         }
     }
 
@@ -1664,6 +1804,88 @@ mod tests {
             rig.core.hotkey_bindings(),
             [("Ctrl+M".to_string(), HotkeyAction::ToggleMute)]
         );
+    }
+
+    #[test]
+    fn voice_hotkeys_toggle_presets_and_conflict_with_others() {
+        let mut rig = rig();
+        let a = rig.import("a", Retrigger::Restart);
+        rig.core
+            .set_voice_hotkey("chipmunk", Some("Ctrl+F1".into()))
+            .unwrap();
+        assert!(matches!(
+            rig.core.set_sound_hotkey(&a, Some("ctrl+f1".into())),
+            Err(Error::HotkeyConflict(_, owner)) if owner == "Voice: Chipmunk"
+        ));
+        assert!(matches!(
+            rig.core.set_voice_hotkey("giant", Some("Ctrl+F1".into())),
+            Err(Error::HotkeyConflict(..))
+        ));
+        rig.core
+            .set_voice_hotkey("chipmunk", Some("Ctrl+F1".into()))
+            .unwrap();
+        assert!(rig.core.set_voice_hotkey("nope", None).is_err());
+        assert_eq!(
+            rig.core.hotkey_bindings(),
+            [(
+                "Ctrl+F1".to_string(),
+                HotkeyAction::SetVoicePreset("chipmunk".into())
+            )]
+        );
+
+        assert!(rig.core.toggle_voice_preset("chipmunk").unwrap());
+        assert!(rig.core.settings.voice.enabled);
+        assert!(rig.core.toggle_voice_preset("giant").unwrap());
+        assert_eq!(rig.core.settings.voice.preset, "giant");
+        assert!(!rig.core.toggle_voice_preset("giant").unwrap());
+        assert!(!rig.core.settings.voice.enabled);
+        assert!(rig.core.toggle_voice_preset("nope").is_err());
+    }
+
+    #[test]
+    fn hear_myself_gives_the_monitor_a_mic_reader() {
+        let mut rig = rig();
+        assert!(!rig.core.monitor.as_ref().unwrap().has_mic);
+        assert!(!rig.core.mic.as_ref().unwrap().tapped);
+
+        let on = VoiceSettings {
+            hear_myself: true,
+            ..Default::default()
+        };
+        rig.core.set_voice_changer(on);
+        assert!(rig.core.mic.as_ref().unwrap().tapped);
+        assert!(rig.core.monitor.as_ref().unwrap().has_mic);
+        assert!(rig.core.virtual_out.as_ref().unwrap().has_mic);
+
+        // A re-opened monitor gets a fresh reader because the mic is re-opened with it.
+        rig.core.close_output(StreamRole::Monitor);
+        rig.core.ensure_streams();
+        assert!(rig.core.monitor.as_ref().unwrap().has_mic);
+
+        rig.core.set_voice_changer(VoiceSettings::default());
+        assert!(!rig.core.mic.as_ref().unwrap().tapped);
+        assert!(!rig.core.monitor.as_ref().unwrap().has_mic);
+        assert!(rig.core.virtual_out.as_ref().unwrap().has_mic);
+    }
+
+    #[test]
+    fn saving_the_voice_changer_keeps_its_hotkeys() {
+        let mut rig = rig();
+        rig.core
+            .set_voice_hotkey("alien", Some("F9".into()))
+            .unwrap();
+        rig.core.set_voice_changer(VoiceSettings {
+            enabled: true,
+            preset: "custom".into(),
+            semitones: 99.0,
+            ..Default::default()
+        });
+        let v = &rig.core.settings.voice;
+        assert!(v.enabled);
+        assert_eq!(v.semitones, 12.0);
+        assert_eq!(v.hotkeys.get("alien").map(String::as_str), Some("F9"));
+        assert!(!rig.core.set_voice_enabled(None));
+        assert!(rig.core.set_voice_enabled(Some(true)));
     }
 
     #[test]

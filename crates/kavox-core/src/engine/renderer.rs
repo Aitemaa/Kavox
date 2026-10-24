@@ -5,6 +5,7 @@ use rtrb::{Consumer, Producer, RingBuffer};
 use super::limiter::Limiter;
 use super::meters::{Meter, Meters};
 use super::mic::MicInput;
+use super::pitch::{PitchParams, PitchShifter};
 use super::smoothed::Smoothed;
 use super::{MAX_BLOCK_FRAMES, MAX_VOICES, VoiceId};
 use crate::clip::ClipData;
@@ -34,6 +35,7 @@ pub enum Command {
     SetSoundsGain(f32),
     SetMicGain(f32),
     SetMicMuted(bool),
+    SetPitch(PitchParams),
     /// Must already be prepared for this renderer's rate.
     SetMic(Option<Box<MicInput>>),
 }
@@ -80,6 +82,8 @@ pub struct Renderer {
     mic_gain: Smoothed,
     mic_level: f32,
     mic_muted: bool,
+    pitch: PitchShifter,
+    pitch_params: PitchParams,
     limiter: Limiter,
     meters: Arc<Meters>,
     meter: Meter,
@@ -102,6 +106,8 @@ pub fn renderer(meter: Meter, meters: Arc<Meters>) -> (Renderer, RendererHandle)
         mic_gain: Smoothed::new(1.0),
         mic_level: 1.0,
         mic_muted: false,
+        pitch: PitchShifter::new(48_000),
+        pitch_params: PitchParams::default(),
         limiter: Limiter::new(48_000),
         meters,
         meter,
@@ -116,14 +122,16 @@ pub fn renderer(meter: Meter, meters: Arc<Meters>) -> (Renderer, RendererHandle)
 }
 
 impl Renderer {
-    /// Initial gains and mic, applied before the stream starts.
+    /// Initial gains, voice changer and mic, applied before the stream starts.
     pub fn configure(
         &mut self,
         sounds_gain: f32,
         mic_gain: f32,
         mic_muted: bool,
+        pitch: PitchParams,
         mic: Option<Box<MicInput>>,
     ) {
+        self.pitch_params = pitch;
         self.sounds_gain = Smoothed::new(sounds_gain);
         self.mic_level = mic_gain;
         self.mic_muted = mic_muted;
@@ -139,6 +147,8 @@ impl Renderer {
     pub fn prepare(&mut self, rate: u32) {
         self.rate = rate.max(1);
         self.limiter = Limiter::new(self.rate);
+        self.pitch = PitchShifter::new(self.rate);
+        self.pitch.apply(self.pitch_params);
         if let Some(mic) = &mut self.mic {
             mic.prepare(self.rate);
         }
@@ -181,6 +191,7 @@ impl Renderer {
         if let Some(mic) = &mut self.mic {
             let mono = &mut self.mic_buf[..out.len() / 2];
             mic.read(mono);
+            self.pitch.process(mono);
             for (frame, s) in out.as_chunks_mut::<2>().0.iter_mut().zip(mono.iter()) {
                 let v = s * self.mic_gain.next();
                 frame[0] += v;
@@ -246,7 +257,12 @@ impl Renderer {
                     self.mic_muted = muted;
                     self.update_mic_gain();
                 }
+                Command::SetPitch(params) => {
+                    self.pitch_params = params;
+                    self.pitch.apply(params);
+                }
                 Command::SetMic(mic) => {
+                    self.pitch.reset();
                     if let Some(old) = std::mem::replace(&mut self.mic, mic) {
                         self.trash(Garbage::Mic(old));
                     }
@@ -463,12 +479,65 @@ mod tests {
     }
 
     #[test]
+    fn voice_changer_shifts_the_mic() {
+        let meters = Arc::new(Meters::default());
+        let (mut sink, mut mic) = mic_channel(meters.clone());
+        mic.set_input_rate(RATE);
+        let (mut r, mut h) = renderer(Meter::Virtual, meters);
+        r.configure(1.0, 1.0, false, PitchParams::default(), Some(Box::new(mic)));
+        r.prepare(RATE);
+        // Feed the mic in device-sized chunks; a big push would trip the ring's catch-up and drop most of it.
+        let mut t = 0usize;
+        let mut run_blocks = |r: &mut Renderer, blocks: usize| -> Vec<f32> {
+            let mut left = Vec::new();
+            for _ in 0..blocks {
+                let tone: Vec<f32> = (0..480)
+                    .map(|i| {
+                        0.3 * (std::f32::consts::TAU * 500.0 * (t + i) as f32 / RATE as f32).sin()
+                    })
+                    .collect();
+                t += 480;
+                sink.push_interleaved(&tone, 1, |s| s);
+                let mut out = vec![0f32; 960];
+                r.render(&mut out);
+                left.extend(out.as_chunks::<2>().0.iter().map(|f| f[0]));
+            }
+            left
+        };
+        let rises = |left: &[f32]| {
+            left.windows(2)
+                .filter(|w| w[0] < 0.0 && w[1] >= 0.0)
+                .count()
+        };
+
+        run_blocks(&mut r, 20);
+        let plain = rises(&run_blocks(&mut r, 50));
+        assert!(
+            plain > 200,
+            "500 Hz for 0.5 s should cross about 250 times, got {plain}"
+        );
+
+        let params = PitchParams {
+            enabled: true,
+            semitones: 12.0,
+            ..Default::default()
+        };
+        assert!(h.commands.push(Command::SetPitch(params)).is_ok());
+        run_blocks(&mut r, 30);
+        let shifted = rises(&run_blocks(&mut r, 50));
+        assert!(
+            shifted > plain * 3 / 2,
+            "an octave up should roughly double the pitch ({plain} -> {shifted})"
+        );
+    }
+
+    #[test]
     fn bus_gain_ramps_and_mute_keeps_sounds() {
         let meters = Arc::new(Meters::default());
         let (mut sink, mut mic) = mic_channel(meters.clone());
         mic.set_input_rate(RATE);
         let (mut r, mut h) = renderer(Meter::Virtual, meters);
-        r.configure(0.5, 1.0, false, Some(Box::new(mic)));
+        r.configure(0.5, 1.0, false, PitchParams::default(), Some(Box::new(mic)));
         r.prepare(RATE);
         sink.push_interleaved(&vec![0.1f32; 4000], 1, |s| s);
         play(&mut h, 1, clip(48_000, 0.2));

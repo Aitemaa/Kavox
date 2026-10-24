@@ -95,5 +95,10 @@ pub fn run(app: &AppHandle, action: HotkeyAction) {
         HotkeyAction::ToggleMute => {
             core.set_mic_muted(None);
         }
+        HotkeyAction::SetVoicePreset(id) => {
+            if let Err(e) = core.toggle_voice_preset(&id) {
+                tracing::warn!("hotkey voice failed: {e}");
+            }
+        }
     }
 }

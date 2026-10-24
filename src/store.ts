@@ -16,6 +16,7 @@ import {
   type Settings,
   type StreamStatus,
   type VirtualStatus,
+  type VoiceSettings,
 } from './api';
 
 export interface Voice {
@@ -36,6 +37,8 @@ export interface Confirm {
   action: string;
   onConfirm: () => void;
 }
+
+export type View = 'sounds' | 'voice';
 
 export type SettingsTab = 'audio' | 'hotkeys' | 'app' | 'about';
 
@@ -61,7 +64,9 @@ interface KavoxState {
   settingsTab: SettingsTab;
   confirm: Confirm | null;
   dragging: boolean;
+  view: View;
   lastAudioEdit: number;
+  lastVoiceEdit: number;
 }
 
 export const useStore = create<KavoxState>(() => ({
@@ -86,7 +91,9 @@ export const useStore = create<KavoxState>(() => ({
   settingsTab: 'audio',
   confirm: null,
   dragging: false,
+  view: 'sounds',
   lastAudioEdit: 0,
+  lastVoiceEdit: 0,
 }));
 
 const set = useStore.setState;
@@ -177,15 +184,31 @@ function applyLibrary(library: Library) {
 
 /** Keeps in-flight slider values from jumping back while their own echoes arrive. */
 function applySettings(next: Settings) {
-  const { lastAudioEdit, settings } = get();
-  const editing = Date.now() - lastAudioEdit < 400;
-  set({ settings: editing ? { ...next, audio: settings.audio } : next });
+  const { lastAudioEdit, lastVoiceEdit, settings } = get();
+  const now = Date.now();
+  set({
+    settings: {
+      ...next,
+      audio: now - lastAudioEdit < 400 ? settings.audio : next.audio,
+      voice: now - lastVoiceEdit < 400 ? { ...next.voice, ...settings.voice, hotkeys: next.voice.hotkeys } : next.voice,
+    },
+  });
 }
 
 export function updateAudio(patch: Partial<AudioSettings>) {
   const audio = { ...get().settings.audio, ...patch };
   set((s) => ({ settings: { ...s.settings, audio }, lastAudioEdit: Date.now() }));
   return run(api.setAudioSettings(audio));
+}
+
+export function updateVoice(patch: Partial<VoiceSettings>) {
+  const voice = { ...get().settings.voice, ...patch };
+  set((s) => ({ settings: { ...s.settings, voice }, lastVoiceEdit: Date.now() }));
+  return run(api.setVoiceChanger(voice));
+}
+
+export function setView(view: View) {
+  set({ view, editing: null });
 }
 
 export async function updateApp(patch: Partial<AppSettings>) {

@@ -6,14 +6,23 @@ use crate::{AppState, lock, show_main_window};
 
 pub struct TrayItems {
     mute: CheckMenuItem<Wry>,
+    voice: CheckMenuItem<Wry>,
 }
 
 pub fn create(app: &AppHandle) -> tauri::Result<()> {
     let state = app.state::<AppState>();
-    let muted = state.controller.lock().settings().audio.mic_muted;
+    let (muted, voice_on) = {
+        let core = state.controller.lock();
+        (
+            core.settings().audio.mic_muted,
+            core.settings().voice.enabled,
+        )
+    };
     let show = MenuItem::with_id(app, "show", "Show Kavox", true, None::<&str>)?;
     let stop = MenuItem::with_id(app, "stop_all", "Stop all sounds", true, None::<&str>)?;
     let mute = CheckMenuItem::with_id(app, "mute", "Mute mic", true, muted, None::<&str>)?;
+    let voice =
+        CheckMenuItem::with_id(app, "voice", "Voice changer", true, voice_on, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit Kavox", true, None::<&str>)?;
     let menu = Menu::with_items(
         app,
@@ -21,6 +30,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
             &show,
             &stop,
             &mute,
+            &voice,
             &PredefinedMenuItem::separator(app)?,
             &quit,
         ],
@@ -37,6 +47,9 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
                 "stop_all" => state.controller.lock().stop_all(),
                 "mute" => {
                     state.controller.lock().set_mic_muted(None);
+                }
+                "voice" => {
+                    state.controller.lock().set_voice_enabled(None);
                 }
                 "quit" => app.exit(0),
                 _ => {}
@@ -56,7 +69,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
         builder = builder.icon(icon.clone());
     }
     builder.build(app)?;
-    *lock(&state.tray) = Some(TrayItems { mute });
+    *lock(&state.tray) = Some(TrayItems { mute, voice });
     Ok(())
 }
 
@@ -70,5 +83,18 @@ pub fn set_muted(app: &AppHandle, muted: bool) {
     };
     let _ = app.run_on_main_thread(move || {
         let _ = mute.set_checked(muted);
+    });
+}
+
+/// Same as `set_muted`, for the voice changer checkbox.
+pub fn set_voice_enabled(app: &AppHandle, enabled: bool) {
+    let Some(state) = app.try_state::<AppState>() else {
+        return;
+    };
+    let Some(voice) = lock(&state.tray).as_ref().map(|t| t.voice.clone()) else {
+        return;
+    };
+    let _ = app.run_on_main_thread(move || {
+        let _ = voice.set_checked(enabled);
     });
 }

@@ -8,6 +8,7 @@ pub mod error;
 pub mod library;
 pub mod persist;
 pub mod settings;
+pub mod voice;
 
 pub use backend::{DeviceInfo, DeviceList, StreamRole, VirtualStatus, platform_backend};
 pub use controller::{
@@ -16,4 +17,4 @@ pub use controller::{
 };
 pub use error::{ApiError, Error, Result};
 pub use library::{Board, Library, Retrigger, Sound, SoundPatch, prepare_import};
-pub use settings::{AppSettings, AudioSettings, GlobalHotkeys, Settings, Theme};
+pub use settings::{AppSettings, AudioSettings, GlobalHotkeys, Settings, Theme, VoiceSettings};

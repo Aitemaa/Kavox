@@ -1,4 +1,4 @@
-// Dev-only UI preview with a mocked backend: `npm run dev`, then open /preview.html?view=main|wizard|settings|editor|empty&platform=windows|linux&theme=dark|light.
+// Dev-only UI preview with a mocked backend: `npm run dev`, then open /preview.html?view=main|wizard|settings|editor|empty|voice&platform=windows|linux&theme=dark|light.
 import { createRoot } from 'react-dom/client';
 import { emit } from '@tauri-apps/api/event';
 import { mockIPC, mockWindows } from '@tauri-apps/api/mocks';
@@ -38,6 +38,13 @@ const state: UiState = {
       soundsToMicGain: 0.8, soundsToMonitorGain: 0.5, monitorEnabled: true, normalize: true,
     },
     hotkeys: { stopAll: 'Ctrl+0', toggleMute: 'Ctrl+Shift+M' },
+    voice: {
+      enabled: view === 'voice',
+      preset: view === 'voice' ? 'chipmunk' : 'normal',
+      semitones: 0,
+      hearMyself: false,
+      hotkeys: { chipmunk: 'F1', giant: 'F3' },
+    },
     app: { startMinimized: false, closeToTray: true, launchOnLogin: false, theme, setupComplete: view !== 'wizard' },
   },
   library: {
@@ -78,7 +85,7 @@ const state: UiState = {
 };
 
 mockWindows('main');
-mockIPC((cmd) => (cmd === 'get_state' ? state : null), { shouldMockEvents: true });
+mockIPC((cmd) => (cmd === 'get_state' ? state : cmd === 'set_voice_enabled' ? true : null), { shouldMockEvents: true });
 
 createRoot(document.getElementById('root')!).render(<App />);
 
@@ -92,6 +99,7 @@ const ready = setInterval(() => {
   }
   void emit('levels', { mic: 0.18, virtual: 0.5, monitor: 0.3 });
   if (view === 'settings') openSettings((params.get('tab') as 'audio') ?? 'audio');
+  if (view === 'voice') useStore.setState({ view: 'voice' });
   if (view === 'editor') useStore.setState({ editing: 's3' });
   if (view === 'toast') void emit('notice', { level: 'warn', message: 'Headphones (Realtek Audio) isn’t connected, so you’ll hear sounds on the default output.' });
 }, 20);

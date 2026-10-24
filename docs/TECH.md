@@ -100,12 +100,12 @@ On Windows the real-time threads are cpal's WASAPI callback threads. On Linux th
 ```
                       ┌──────────────── sounds-to-mic gain ───┐
 clip voices ──────────┤                                        ├─► Σ ─► limiter ─► virtual device
-                      │      mic ─► mic gain ─► mute ──────────┘
+                      │  mic ─► pitch ─► mic gain ─► mute ─────┘
                       │
                       └──────────────── sounds-to-monitor gain ──► Σ ─► limiter ─► monitor device
 ```
 
-The mic is not sent to the monitor (users hear themselves through their own head anyway, and it causes echo with open speakers).
+The mic is not sent to the monitor by default (users hear themselves through their own head anyway, and it causes echo with open speakers). With **Hear myself** on, the mic stream is created with a second ring buffer (`mic_channel_tapped`), and the monitor renderer reads it through its own `MicInput` and `PitchShifter`, with the same gain and mute as the virtual path. Toggling the setting, or re-opening the monitor while it is on, re-opens the mic stream so both readers are fresh.
 
 ### 5.2 Internal format
 
@@ -232,6 +232,16 @@ mic callback ─► rtrb ring (mono or stereo, mic's rate) ─► async resample
 The resampler and its buffers are allocated when the stream is built, never inside `render`.
 
 Expected added mic latency: capture period (~10 ms) + ring target (20 ms) + render period (~10 ms) ≈ 40 ms (NFR-2).
+
+### 5.6.1 Voice changer
+
+`engine/pitch.rs` shifts the mono mic signal in place right after `MicInput::read`. It is a granular delay-line shifter: audio is written into a ring, and two read heads 12.5 ms apart trail the write head and drift by `1 − ratio` samples per sample (`ratio = 2^(semitones/12)`), each fading out with a Hann window as it wraps. All state is allocated in `PitchShifter::new`, and block size doesn't matter, so it follows the real-time rules in §5.5.
+
+- Added delay is half the 25 ms window on average (12.5 ms), 25 ms at most.
+- Pitch changes glide over 80 ms, and the wet/dry mix fades over 20 ms, so switching voices and toggling the effect don't click. Below 0.05 semitones with no wobble the effect is bypassed.
+- Wobble is an LFO added to the pitch (depth in semitones, rate in Hz). It drives the Wobbly, Drunk and Alien voices.
+- A pure tone whose period fits a whole or half number of times in the 12.5 ms gap between the heads (multiples of 40 Hz) nulls out briefly while the heads crossfade. Speech is not affected in practice.
+- Presets live in `voice.rs` (id, semitones, wobble); `src/voices.ts` mirrors the numbers for display only. `Command::SetPitch(PitchParams)` carries state to the renderer, and `Renderer::configure` takes it so stream rebuilds restore the voice.
 
 ### 5.7 Gains and limiter
 
@@ -406,6 +416,13 @@ IDs are ULIDs. Importing a file whose SHA-256 already exists offers to reuse the
     "normalize": true
   },
   "hotkeys": { "stopAll": "Ctrl+0", "toggleMute": "Ctrl+Shift+M" },
+  "voice": {
+    "enabled": false,
+    "preset": "normal",
+    "semitones": 0,
+    "hearMyself": false,
+    "hotkeys": { "chipmunk": "F1" }
+  },
   "ptt": { "enabled": false, "scancode": null },
   "app": { "startMinimized": false, "closeToTray": true, "theme": "system", "setupComplete": false }
 }

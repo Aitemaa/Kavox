@@ -37,6 +37,7 @@ impl EventSink for TauriSink {
     fn emit(&self, event: UiEvent) {
         if let UiEvent::Settings(settings) = &event {
             tray::set_muted(&self.app, settings.audio.mic_muted);
+            tray::set_voice_enabled(&self.app, settings.voice.enabled);
         }
         let _ = self.app.emit(event.name(), &event);
     }
