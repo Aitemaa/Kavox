@@ -143,6 +143,12 @@ function AudioTab() {
           checked={audio.normalize}
           onChange={(normalize) => updateAudio({ normalize })}
         />
+        <Switch
+          label="Use one volume for every sound"
+          description="Ignores each sound's own volume, so the “Sounds to mic” and “Sounds in your ears” sliders set the level for all of them. Your microphone isn't affected."
+          checked={audio.globalVolumeOverride}
+          onChange={(globalVolumeOverride) => updateAudio({ globalVolumeOverride })}
+        />
       </section>
 
       <button type="button" className="button" onClick={() => useStore.setState({ dialog: 'wizard' })}>

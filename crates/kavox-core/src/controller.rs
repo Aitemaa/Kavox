@@ -563,7 +563,12 @@ impl Core {
         } else {
             1.0
         };
-        sound.volume * norm
+        let own = if self.settings.audio.global_volume_override {
+            1.0
+        } else {
+            sound.volume
+        };
+        own * norm
     }
 
     fn voices_of(&self, sound: &str) -> Vec<VoiceId> {
@@ -817,7 +822,9 @@ impl Core {
             let _ = commands.push(Command::SetMicGain(audio.mic_gain));
             let _ = commands.push(Command::SetMicMuted(audio.mic_muted));
         }
-        if old.normalize != audio.normalize {
+        if old.normalize != audio.normalize
+            || old.global_volume_override != audio.global_volume_override
+        {
             self.update_voice_gains(None);
         }
         self.ensure_streams();
@@ -1470,14 +1477,15 @@ impl Core {
         let a = &self.settings.audio;
         let _ = writeln!(
             out,
-            "Audio: passthrough={} muted={} micGain={:.2} toMic={:.2} toMonitor={:.2} monitor={} normalize={}",
+            "Audio: passthrough={} muted={} micGain={:.2} toMic={:.2} toMonitor={:.2} monitor={} normalize={} volumeOverride={}",
             a.mic_passthrough,
             a.mic_muted,
             a.mic_gain,
             a.sounds_to_mic_gain,
             a.sounds_to_monitor_gain,
             a.monitor_enabled,
-            a.normalize
+            a.normalize,
+            a.global_volume_override
         );
         let labels = |list: &[crate::backend::DeviceInfo]| {
             list.iter()
@@ -1943,6 +1951,45 @@ mod tests {
         assert!(rig.paths.sounds_dir.join(&file).exists());
         rig.core.delete_sound(&b).unwrap();
         assert!(!rig.paths.sounds_dir.join(&file).exists());
+    }
+
+    #[test]
+    fn global_volume_override_ignores_sound_volume_only() {
+        let mut rig = rig();
+        let id = rig.import("quiet", Retrigger::Restart);
+        rig.core
+            .update_sound(
+                &id,
+                SoundPatch {
+                    volume: Some(0.25),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        // Normalization is separate and keeps applying, so compare against it.
+        let norm = clip::db_to_gain(rig.core.library.sound(&id).unwrap().norm_gain_db);
+        let gain = |rig: &Rig| rig.core.sound_gain(rig.core.library.sound(&id).unwrap());
+        assert!((gain(&rig) - 0.25 * norm).abs() < 1e-6);
+
+        let mut audio = rig.core.settings.audio.clone();
+        audio.global_volume_override = true;
+        audio.mic_gain = 0.7;
+        rig.core.set_audio_settings(audio);
+        assert!((gain(&rig) - norm).abs() < 1e-6, "sound volume is ignored");
+        assert_eq!(rig.core.settings.audio.mic_gain, 0.7, "mic is untouched");
+        assert_eq!(
+            rig.core.library.sound(&id).unwrap().volume,
+            0.25,
+            "stored volume is kept"
+        );
+
+        let mut audio = rig.core.settings.audio.clone();
+        audio.global_volume_override = false;
+        rig.core.set_audio_settings(audio);
+        assert!(
+            (gain(&rig) - 0.25 * norm).abs() < 1e-6,
+            "turning it off restores it"
+        );
     }
 
     #[test]

@@ -28,6 +28,7 @@ export function PadEditor() {
 
 function Editor({ sound }: { sound: Sound }) {
   const hotkeysSupported = useStore((s) => s.hotkeysSupported);
+  const overridden = useStore((s) => s.settings.audio.globalVolumeOverride);
   const [name, setName] = useState(sound.name);
   const [volume, setVolume] = useState(sound.volume);
   const nameId = useId();
@@ -103,6 +104,11 @@ function Editor({ sound }: { sound: Sound }) {
               <Icon name="play" />
             </button>
           </div>
+          {overridden && (
+            <p className="field-hint">
+              Not used right now: Settings → Audio has “Use one volume for every sound” turned on. This value is kept for when you turn it off.
+            </p>
+          )}
         </div>
 
         <HotkeyRecorder label="Hotkey" value={sound.hotkey} onChange={(h) => api.setSoundHotkey(sound.id, h)} />
