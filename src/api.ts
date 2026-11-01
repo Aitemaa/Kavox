@@ -44,6 +44,7 @@ export interface AudioSettings {
   soundsToMonitorGain: number;
   monitorEnabled: boolean;
   normalize: boolean;
+  globalVolumeOverride: boolean;
 }
 
 export interface VoiceSettings {

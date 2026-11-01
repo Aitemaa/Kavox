@@ -51,6 +51,8 @@ pub struct AudioSettings {
     pub sounds_to_monitor_gain: f32,
     pub monitor_enabled: bool,
     pub normalize: bool,
+    /// Ignore each sound's own volume, so the two sound faders alone set the level. Never touches the mic.
+    pub global_volume_override: bool,
 }
 
 impl Default for AudioSettings {
@@ -66,6 +68,7 @@ impl Default for AudioSettings {
             sounds_to_monitor_gain: 0.5,
             monitor_enabled: true,
             normalize: true,
+            global_volume_override: false,
         }
     }
 }
@@ -193,6 +196,16 @@ mod tests {
         assert_eq!(s.audio.mic_gain, 0.5);
         assert!(s.audio.mic_passthrough);
         assert!(s.app.close_to_tray);
+        assert!(!s.audio.global_volume_override);
+    }
+
+    #[test]
+    fn volume_override_round_trips() {
+        let s: Settings =
+            serde_json::from_str(r#"{"schema":1,"audio":{"globalVolumeOverride":true}}"#).unwrap();
+        assert!(s.audio.global_volume_override);
+        let json = serde_json::to_string(&s).unwrap();
+        assert!(json.contains(r#""globalVolumeOverride":true"#));
     }
 
     #[test]

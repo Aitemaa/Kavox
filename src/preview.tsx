@@ -35,7 +35,7 @@ const state: UiState = {
     schema: 1,
     audio: {
       micDevice: null, virtualOutput: null, monitorOutput: null, micPassthrough: true, micGain: 1, micMuted: false,
-      soundsToMicGain: 0.8, soundsToMonitorGain: 0.5, monitorEnabled: true, normalize: true,
+      soundsToMicGain: 0.8, soundsToMonitorGain: 0.5, monitorEnabled: true, normalize: true, globalVolumeOverride: false,
     },
     hotkeys: { stopAll: 'Ctrl+0', toggleMute: 'Ctrl+Shift+M' },
     voice: {
