@@ -45,6 +45,7 @@ export interface AudioSettings {
   monitorEnabled: boolean;
   normalize: boolean;
   globalVolumeOverride: boolean;
+  globalSoundVolume: number;
 }
 
 export interface VoiceSettings {

@@ -51,8 +51,10 @@ pub struct AudioSettings {
     pub sounds_to_monitor_gain: f32,
     pub monitor_enabled: bool,
     pub normalize: bool,
-    /// Ignore each sound's own volume, so the two sound faders alone set the level. Never touches the mic.
+    /// Use `global_sound_volume` for every sound instead of each sound's own volume. Never touches the mic.
     pub global_volume_override: bool,
+    /// Stands in for every sound's volume while the override is on, so it moves both the mic and the headphones.
+    pub global_sound_volume: f32,
 }
 
 impl Default for AudioSettings {
@@ -69,6 +71,7 @@ impl Default for AudioSettings {
             monitor_enabled: true,
             normalize: true,
             global_volume_override: false,
+            global_sound_volume: 1.0,
         }
     }
 }
@@ -86,6 +89,7 @@ impl AudioSettings {
         self.mic_gain = clamp(self.mic_gain, 2.0);
         self.sounds_to_mic_gain = clamp(self.sounds_to_mic_gain, 2.0);
         self.sounds_to_monitor_gain = clamp(self.sounds_to_monitor_gain, 2.0);
+        self.global_sound_volume = clamp(self.global_sound_volume, 2.0);
         self
     }
 }
@@ -197,15 +201,35 @@ mod tests {
         assert!(s.audio.mic_passthrough);
         assert!(s.app.close_to_tray);
         assert!(!s.audio.global_volume_override);
+        assert_eq!(s.audio.global_sound_volume, 1.0);
     }
 
     #[test]
     fn volume_override_round_trips() {
-        let s: Settings =
-            serde_json::from_str(r#"{"schema":1,"audio":{"globalVolumeOverride":true}}"#).unwrap();
+        let s: Settings = serde_json::from_str(
+            r#"{"schema":1,"audio":{"globalVolumeOverride":true,"globalSoundVolume":0.4}}"#,
+        )
+        .unwrap();
         assert!(s.audio.global_volume_override);
+        assert_eq!(s.audio.global_sound_volume, 0.4);
         let json = serde_json::to_string(&s).unwrap();
         assert!(json.contains(r#""globalVolumeOverride":true"#));
+        assert!(json.contains(r#""globalSoundVolume":0.4"#));
+    }
+
+    #[test]
+    fn sanitizes_global_sound_volume() {
+        let clamp = |v: f32| {
+            AudioSettings {
+                global_sound_volume: v,
+                ..Default::default()
+            }
+            .sanitized()
+            .global_sound_volume
+        };
+        assert_eq!(clamp(9.0), 2.0);
+        assert_eq!(clamp(-1.0), 0.0);
+        assert_eq!(clamp(f32::NAN), 1.0);
     }
 
     #[test]

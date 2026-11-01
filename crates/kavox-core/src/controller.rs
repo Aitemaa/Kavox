@@ -564,7 +564,7 @@ impl Core {
             1.0
         };
         let own = if self.settings.audio.global_volume_override {
-            1.0
+            self.settings.audio.global_sound_volume
         } else {
             sound.volume
         };
@@ -824,6 +824,7 @@ impl Core {
         }
         if old.normalize != audio.normalize
             || old.global_volume_override != audio.global_volume_override
+            || old.global_sound_volume != audio.global_sound_volume
         {
             self.update_voice_gains(None);
         }
@@ -1477,7 +1478,7 @@ impl Core {
         let a = &self.settings.audio;
         let _ = writeln!(
             out,
-            "Audio: passthrough={} muted={} micGain={:.2} toMic={:.2} toMonitor={:.2} monitor={} normalize={} volumeOverride={}",
+            "Audio: passthrough={} muted={} micGain={:.2} toMic={:.2} toMonitor={:.2} monitor={} normalize={} volumeOverride={} globalVolume={:.2}",
             a.mic_passthrough,
             a.mic_muted,
             a.mic_gain,
@@ -1485,7 +1486,8 @@ impl Core {
             a.sounds_to_monitor_gain,
             a.monitor_enabled,
             a.normalize,
-            a.global_volume_override
+            a.global_volume_override,
+            a.global_sound_volume
         );
         let labels = |list: &[crate::backend::DeviceInfo]| {
             list.iter()
@@ -1954,7 +1956,7 @@ mod tests {
     }
 
     #[test]
-    fn global_volume_override_ignores_sound_volume_only() {
+    fn global_volume_replaces_sound_volume() {
         let mut rig = rig();
         let id = rig.import("quiet", Retrigger::Restart);
         rig.core
@@ -1973,9 +1975,13 @@ mod tests {
 
         let mut audio = rig.core.settings.audio.clone();
         audio.global_volume_override = true;
+        audio.global_sound_volume = 0.5;
         audio.mic_gain = 0.7;
         rig.core.set_audio_settings(audio);
-        assert!((gain(&rig) - norm).abs() < 1e-6, "sound volume is ignored");
+        assert!(
+            (gain(&rig) - 0.5 * norm).abs() < 1e-6,
+            "the global volume stands in for the sound's own"
+        );
         assert_eq!(rig.core.settings.audio.mic_gain, 0.7, "mic is untouched");
         assert_eq!(
             rig.core.library.sound(&id).unwrap().volume,
@@ -1984,11 +1990,57 @@ mod tests {
         );
 
         let mut audio = rig.core.settings.audio.clone();
+        audio.global_sound_volume = 1.5;
+        rig.core.set_audio_settings(audio);
+        assert!(
+            (gain(&rig) - 1.5 * norm).abs() < 1e-6,
+            "moving the slider applies"
+        );
+
+        let mut audio = rig.core.settings.audio.clone();
         audio.global_volume_override = false;
         rig.core.set_audio_settings(audio);
         assert!(
             (gain(&rig) - 0.25 * norm).abs() < 1e-6,
-            "turning it off restores it"
+            "turning it off restores the sound's own volume"
+        );
+    }
+
+    /// What reaches the headphones, which is where the global volume was first reported as not working.
+    #[test]
+    fn global_volume_changes_what_the_headphones_hear() {
+        let mut rig = rig();
+        let id = rig.import("tone", Retrigger::Restart);
+        let mut audio = rig.core.settings.audio.clone();
+        audio.global_volume_override = true;
+        // Normalized clips peak near the limiter's ceiling, so keep clear of it to compare levels.
+        audio.sounds_to_monitor_gain = 0.25;
+        rig.core.set_audio_settings(audio);
+        rig.step(); // lets the fader finish easing to its new value
+
+        let monitor_peak = |rig: &mut Rig, global: f32| {
+            let mut audio = rig.core.settings.audio.clone();
+            audio.global_sound_volume = global;
+            rig.core.set_audio_settings(audio);
+            rig.core.play_sound(&id).unwrap();
+            let mut out = vec![0f32; 960];
+            for (role, r) in rig.renderers.lock().unwrap().iter_mut() {
+                if matches!(role, StreamRole::Monitor) {
+                    r.render(&mut out);
+                }
+            }
+            rig.core.stop_all();
+            for _ in 0..3 {
+                rig.step();
+            }
+            out.iter().fold(0f32, |m, s| m.max(s.abs()))
+        };
+        let full = monitor_peak(&mut rig, 1.0);
+        let half = monitor_peak(&mut rig, 0.5);
+        assert!(full > 0.01, "the sound is audible");
+        assert!(
+            (half - full * 0.5).abs() < full * 0.02,
+            "half the global volume is half as loud: {half} vs {full}"
         );
     }
 

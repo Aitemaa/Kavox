@@ -106,7 +106,7 @@ function Editor({ sound }: { sound: Sound }) {
           </div>
           {overridden && (
             <p className="field-hint">
-              Not used right now: Settings → Audio has “Use one volume for every sound” turned on. This value is kept for when you turn it off.
+              Not used right now: “Use one volume for every sound” is on in Settings → Audio, so the “All sounds” slider sets the volume instead. This value is kept for when you turn it off.
             </p>
           )}
         </div>

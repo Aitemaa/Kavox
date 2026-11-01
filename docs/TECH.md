@@ -247,7 +247,7 @@ Expected added mic latency: capture period (~10 ms) + ring target (20 ms) + rend
 
 - Gains are linear multipliers set from dB-scaled UI sliders. Pad volume ranges 0–200% (+6 dB).
 - Effective clip gain = `pad_volume × norm_gain × bus_gain`.
-- With `audio.globalVolumeOverride` on, `pad_volume` is treated as 1.0, so only the two bus gains (sounds-to-mic, sounds-to-monitor) set the level. Stored pad volumes are kept, and mic gain is never involved. Toggling it re-gains voices that are already playing.
+- With `audio.globalVolumeOverride` on, `audio.globalSoundVolume` (0–200%, default 100%) stands in for `pad_volume`. It is a clip gain, so it moves the mic and headphone outputs together; the two bus gains still apply after it. Stored pad volumes are kept, and mic gain is never involved. Toggling the override or moving the slider re-gains voices that are already playing.
 - **Limiter** per output: peak detector with 1 ms attack, 100 ms release, threshold −1 dBFS, followed by a hard clamp to ±1.0. No look-ahead, so the clamp catches the rare fast transient.
 
 ### 5.8 Meters
@@ -415,7 +415,8 @@ IDs are ULIDs. Importing a file whose SHA-256 already exists offers to reuse the
     "soundsToMonitorGain": 0.5,
     "monitorEnabled": true,
     "normalize": true,
-    "globalVolumeOverride": false
+    "globalVolumeOverride": false,
+    "globalSoundVolume": 1.0
   },
   "hotkeys": { "stopAll": "Ctrl+0", "toggleMute": "Ctrl+Shift+M" },
   "voice": {
