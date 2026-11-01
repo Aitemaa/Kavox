@@ -1112,8 +1112,8 @@ kbd {
 }
 
 .strip-channels {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
   gap: 12px 26px;
   flex: 1 1 560px;
   min-width: 0;

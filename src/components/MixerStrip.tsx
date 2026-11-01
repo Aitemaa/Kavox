@@ -30,6 +30,16 @@ export function MixerStrip() {
             onChange={(micGain) => updateAudio({ micGain })}
           />
         </div>
+        {audio.globalVolumeOverride && (
+          <div className="channel">
+            <ChannelIcon name="volume" />
+            <Channel
+              label="All sounds"
+              value={audio.globalSoundVolume}
+              onChange={(globalSoundVolume) => updateAudio({ globalSoundVolume })}
+            />
+          </div>
+        )}
         <div className="channel">
           <ChannelIcon name="broadcast" />
           <Channel
@@ -70,7 +80,7 @@ function ChannelIcon({ name }: { name: IconName }) {
   );
 }
 
-function Channel({ label, value, level, onChange }: { label: string; value: number; level: number; onChange: (v: number) => void }) {
+function Channel({ label, value, level, onChange }: { label: string; value: number; level?: number; onChange: (v: number) => void }) {
   return (
     <div className="channel-body">
       <div className="channel-label">

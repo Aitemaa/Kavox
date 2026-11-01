@@ -145,7 +145,7 @@ function AudioTab() {
         />
         <Switch
           label="Use one volume for every sound"
-          description="Ignores each sound's own volume, so the “Sounds to mic” and “Sounds in your ears” sliders set the level for all of them. Your microphone isn't affected."
+          description="Ignores each sound's own volume. An “All sounds” slider appears next to your mic at the bottom and sets the volume of every sound, in your headphones and in the mic. Your microphone isn't affected."
           checked={audio.globalVolumeOverride}
           onChange={(globalVolumeOverride) => updateAudio({ globalVolumeOverride })}
         />
