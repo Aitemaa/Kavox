@@ -179,9 +179,10 @@ pub fn is_modifier_key(key: egui::Key) -> bool {
 
 /// Converts a recorded `egui` key event into a `global-hotkey` accelerator string.
 ///
-/// Uses `physical_key` (falling back to logical `key`) so non-QWERTY layouts such as AZERTY
-/// record the physical key that `global-hotkey` registers, detects numpad keys explicitly, and
-/// includes `Super` when `super_down` is true on Linux/Windows.
+/// Uses `logical_key` so non-QWERTY layouts such as AZERTY match what `global-hotkey` actually
+/// registers (layout-dependent keysyms on X11 and layout-dependent `VK_*` codes on Windows),
+/// while using `physical_key` for digit-row keys and as the fallback for shifted punctuation
+/// (e.g. `Shift+=` producing `+`), and detecting numpad keys and `Super` explicitly.
 pub fn from_egui_event(
     logical_key: egui::Key,
     physical_key: Option<egui::Key>,
@@ -189,26 +190,36 @@ pub fn from_egui_event(
     super_down: bool,
     platform_numpad: Option<&'static str>,
 ) -> RecordResult {
-    let effective_key = physical_key.unwrap_or(logical_key);
-    if is_modifier_key(effective_key) || is_modifier_key(logical_key) {
+    if is_modifier_key(logical_key) || physical_key.is_some_and(is_modifier_key) {
         return RecordResult::Ignore;
     }
 
     let mods = modifier_tokens(modifiers, super_down);
 
-    if mods.is_empty() && effective_key == egui::Key::Escape {
+    if mods.is_empty() && logical_key == egui::Key::Escape {
         return RecordResult::Cancel;
     }
-    if mods.is_empty() && matches!(effective_key, egui::Key::Backspace | egui::Key::Delete) {
+    if mods.is_empty()
+        && platform_numpad.is_none()
+        && matches!(logical_key, egui::Key::Backspace | egui::Key::Delete)
+    {
         return RecordResult::Clear;
     }
 
     let token = platform_numpad
         .or_else(|| detect_numlock_off_numpad(logical_key, physical_key))
-        .or_else(|| egui_key_token(effective_key));
+        // `egui-winit` only maps `KeyCode::NumpadAdd` to physical `Key::Plus` (whereas
+        // `Shift+=` on QWERTY has logical `Key::Plus` with physical `Key::Equals`).
+        .or_else(|| (physical_key == Some(egui::Key::Plus)).then_some("NumpadAdd"))
+        // Digit-row keys record their digit: AZERTY's unshifted `'`/`-` on 4/6 would otherwise
+        // become `Quote`/`Minus`, which Windows registers as US `VK_OEM_*` keys elsewhere on the
+        // board. Both X11 and Windows (`VK_0`..`VK_9`) resolve digits to the same physical key.
+        .or_else(|| physical_key.filter(is_digit_key).and_then(egui_key_token))
+        .or_else(|| egui_key_token(logical_key))
+        .or_else(|| physical_key.and_then(egui_key_token));
 
     let Some(token) = token else {
-        return RecordResult::Unsupported(effective_key.name().to_owned());
+        return RecordResult::Unsupported(logical_key.name().to_owned());
     };
 
     RecordResult::Set(format_combo(mods, token))
@@ -271,6 +282,11 @@ fn detect_numlock_off_numpad(
         (Num9, PageUp) => Some("Numpad9"),
         _ => None,
     }
+}
+
+fn is_digit_key(key: &egui::Key) -> bool {
+    use egui::Key::*;
+    matches!(key, Num0 | Num1 | Num2 | Num3 | Num4 | Num5 | Num6 | Num7 | Num8 | Num9)
 }
 
 fn egui_key_token(key: egui::Key) -> Option<&'static str> {
@@ -342,8 +358,6 @@ fn egui_key_token(key: egui::Key) -> Option<&'static str> {
         CloseBracket => "BracketRight",
         Comma => "Comma",
         Equals => "Equal",
-        // `egui-winit` only maps `KeyCode::NumpadAdd` to physical `Key::Plus`.
-        Plus => "NumpadAdd",
         Minus => "Minus",
         Period => "Period",
         Quote => "Quote",
@@ -644,12 +658,43 @@ mod tests {
     }
 
     #[test]
-    fn records_physical_key_super_and_numpad() {
+    fn records_logical_key_shifted_punctuation_super_and_numpad() {
         let none = egui::Modifiers::NONE;
-        // AZERTY physical Q produces logical A, must record physical Q
+        // AZERTY key labeled A (physical Q, logical A) records A to match global-hotkey's
+        // layout-dependent X11 keysym / Windows VK_A registration.
         assert_eq!(
             from_egui_event(egui::Key::A, Some(egui::Key::Q), none, false, None),
+            RecordResult::Set("A".into())
+        );
+        assert_eq!(
+            from_egui_event(egui::Key::Q, Some(egui::Key::A), none, false, None),
             RecordResult::Set("Q".into())
+        );
+        // AZERTY digit row (unshifted `'` on physical 4) records the digit, not `Quote`.
+        assert_eq!(
+            from_egui_event(egui::Key::Quote, Some(egui::Key::Num4), none, false, None),
+            RecordResult::Set("4".into())
+        );
+        // Shifted punctuation falls back to physical key instead of Unsupported / NumpadAdd.
+        assert_eq!(
+            from_egui_event(
+                egui::Key::Plus,
+                Some(egui::Key::Equals),
+                egui::Modifiers::SHIFT,
+                false,
+                None
+            ),
+            RecordResult::Set("Shift+Equal".into())
+        );
+        assert_eq!(
+            from_egui_event(
+                egui::Key::Exclamationmark,
+                Some(egui::Key::Num1),
+                egui::Modifiers::SHIFT,
+                false,
+                None
+            ),
+            RecordResult::Set("Shift+1".into())
         );
         // Super+F5 on Linux/Windows (where egui Modifiers has no super bit)
         assert_eq!(
@@ -693,6 +738,48 @@ mod tests {
                 Some("Numpad5")
             ),
             RecordResult::Set("Ctrl+Numpad5".into())
+        );
+        // Clipboard-adjacent combos record their actual keys
+        assert_eq!(
+            from_egui_event(
+                egui::Key::Insert,
+                Some(egui::Key::Insert),
+                egui::Modifiers::SHIFT,
+                false,
+                None
+            ),
+            RecordResult::Set("Shift+Insert".into())
+        );
+        assert_eq!(
+            from_egui_event(
+                egui::Key::V,
+                Some(egui::Key::V),
+                egui::Modifiers::CTRL,
+                false,
+                None
+            ),
+            RecordResult::Set("Ctrl+V".into())
+        );
+        // Unmodified Delete clears, Shift+Delete binds
+        assert_eq!(
+            from_egui_event(
+                egui::Key::Delete,
+                Some(egui::Key::Delete),
+                none,
+                false,
+                None
+            ),
+            RecordResult::Clear
+        );
+        assert_eq!(
+            from_egui_event(
+                egui::Key::Delete,
+                Some(egui::Key::Delete),
+                egui::Modifiers::SHIFT,
+                false,
+                None
+            ),
+            RecordResult::Set("Shift+Delete".into())
         );
     }
 

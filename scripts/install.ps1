@@ -13,7 +13,7 @@ $AppId = 'io.github.aitemaa.kavox'
 $InstallDir = Join-Path $env:LOCALAPPDATA 'Programs\Kavox'
 $Shortcut = Join-Path ([Environment]::GetFolderPath('Programs')) 'Kavox.lnk'
 $Root = Split-Path -Parent $PSScriptRoot
-$MinRust = [version]'1.88'
+$MinRust = [version]'1.95'
 
 function Say($Message) { Write-Host "==> $Message" -ForegroundColor Magenta }
 function Warn($Message) { Write-Host "warning: $Message" -ForegroundColor Yellow }

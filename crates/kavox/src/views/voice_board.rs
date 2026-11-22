@@ -361,16 +361,11 @@ fn draw_voice_tile(
 
         painter.rect_filled(draw_rect, CornerRadius::same(RADIUS_PAD), bg);
 
-        // Top-left dot (pulsing halo when selected)
+        // Top-left dot (static subtle halo when selected; avoids continuous idle repaints)
         let dot_center = Pos2::new(draw_rect.min.x + 19.0, draw_rect.min.y + 19.0);
         if selected {
-            let t = (ui.input(|i| i.time) as f32 * std::f32::consts::TAU / 1.6).sin() * 0.5 + 0.5;
-            let halo_r = 4.0 + t * 5.0;
-            let halo_a = (t * 0.18 * 255.0).round() as u8;
-            painter.circle_filled(dot_center, halo_r, with_alpha(p.on_lit, halo_a));
+            painter.circle_filled(dot_center, 7.5, with_alpha(p.on_lit, 46));
             painter.circle_filled(dot_center, 4.0, p.on_lit);
-            ui.ctx()
-                .request_repaint_after(std::time::Duration::from_millis(33));
         } else {
             painter.circle_filled(dot_center, 4.0, dot_color.gamma_multiply(0.55));
         }

@@ -2,12 +2,14 @@
 
 use std::io::{self, BufRead, BufReader, Write};
 use std::thread::{self, JoinHandle};
+use std::time::Duration;
 
 use interprocess::local_socket::prelude::*;
 use interprocess::local_socket::{ListenerOptions, Name, Stream};
 use serde::{Deserialize, Serialize};
 
 pub const PROTOCOL_VERSION: u32 = 1;
+pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "cmd", rename_all = "kebab-case")]
@@ -111,9 +113,48 @@ fn socket_name() -> io::Result<Name<'static>> {
     }
 }
 
-/// Sends one request to the running app.
+/// Sends one request to the running app using [`DEFAULT_TIMEOUT`].
 pub fn send(request: Request) -> io::Result<Response> {
-    let mut conn = BufReader::new(Stream::connect(socket_name()?)?);
+    send_with_timeout(request, DEFAULT_TIMEOUT)
+}
+
+/// Sends one request to the running app, failing with [`io::ErrorKind::TimedOut`] if the
+/// peer does not respond within `timeout`.
+pub fn send_with_timeout(request: Request, timeout: Duration) -> io::Result<Response> {
+    #[cfg(not(windows))]
+    {
+        send_blocking(request, Some(timeout))
+    }
+    #[cfg(windows)]
+    {
+        // Named pipes on Windows don't support `set_recv_timeout`/`set_send_timeout` in
+        // `interprocess`, so bound the exchange with a channel wait instead.
+        let (tx, rx) = std::sync::mpsc::channel();
+        let _ = thread::Builder::new()
+            .name("kavox-ipc-send".into())
+            .spawn(move || {
+                let _ = tx.send(send_blocking(request, Some(timeout)));
+            });
+        match rx.recv_timeout(timeout) {
+            Ok(res) => res,
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "IPC request timed out",
+            )),
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                Err(io::Error::other("IPC worker terminated unexpectedly"))
+            }
+        }
+    }
+}
+
+fn send_blocking(request: Request, timeout: Option<Duration>) -> io::Result<Response> {
+    let stream = Stream::connect(socket_name()?)?;
+    if timeout.is_some() {
+        let _ = stream.set_recv_timeout(timeout);
+        let _ = stream.set_send_timeout(timeout);
+    }
+    let mut conn = BufReader::new(stream);
     let mut line = serde_json::to_string(&Envelope {
         v: PROTOCOL_VERSION,
         request,
@@ -126,34 +167,51 @@ pub fn send(request: Request) -> io::Result<Response> {
 }
 
 /// Serves requests on a background thread until the process exits.
-pub fn serve(handler: impl Fn(Request) -> Response + Send + 'static) -> io::Result<JoinHandle<()>> {
+///
+/// Each connection is handled on its own short-lived thread, so a client that stalls mid-request
+/// (named pipes on Windows have no read timeout) or a request that waits on app startup can't
+/// block other requests such as a second launch's `Show`.
+pub fn serve(
+    handler: impl Fn(Request) -> Response + Send + Sync + 'static,
+) -> io::Result<JoinHandle<()>> {
     let listener = ListenerOptions::new()
         .name(socket_name()?)
         .try_overwrite(true)
         .create_sync()?;
+    let handler = std::sync::Arc::new(handler);
     thread::Builder::new()
         .name("kavox-ipc".into())
         .spawn(move || {
             for conn in listener.incoming().filter_map(Result::ok) {
-                let mut conn = BufReader::new(conn);
-                let mut line = String::new();
-                if conn.read_line(&mut line).is_err() {
-                    continue;
-                }
-                let response = match serde_json::from_str::<Envelope>(&line) {
-                    Ok(env) if env.v == PROTOCOL_VERSION => handler(env.request),
-                    Ok(env) => Response::error(
-                        "Protocol",
-                        format!("unsupported protocol version {}", env.v),
-                    ),
-                    Err(e) => Response::error("BadRequest", e.to_string()),
-                };
-                if let Ok(mut reply) = serde_json::to_string(&response) {
-                    reply.push('\n');
-                    let _ = conn.get_mut().write_all(reply.as_bytes());
-                }
+                let handler = handler.clone();
+                let _ = thread::Builder::new()
+                    .name("kavox-ipc-conn".into())
+                    .spawn(move || serve_connection(conn, &*handler));
             }
         })
+}
+
+fn serve_connection(conn: Stream, handler: &dyn Fn(Request) -> Response) {
+    // Ignored on Windows named pipes; harmless there since each connection has its own thread.
+    let _ = conn.set_recv_timeout(Some(DEFAULT_TIMEOUT));
+    let _ = conn.set_send_timeout(Some(DEFAULT_TIMEOUT));
+    let mut conn = BufReader::new(conn);
+    let mut line = String::new();
+    if conn.read_line(&mut line).is_err() {
+        return;
+    }
+    let response = match serde_json::from_str::<Envelope>(&line) {
+        Ok(env) if env.v == PROTOCOL_VERSION => handler(env.request),
+        Ok(env) => Response::error(
+            "Protocol",
+            format!("unsupported protocol version {}", env.v),
+        ),
+        Err(e) => Response::error("BadRequest", e.to_string()),
+    };
+    if let Ok(mut reply) = serde_json::to_string(&response) {
+        reply.push('\n');
+        let _ = conn.get_mut().write_all(reply.as_bytes());
+    }
 }
 
 #[cfg(test)]

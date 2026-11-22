@@ -7,7 +7,6 @@ use kavox_core::Paths;
 
 pub const APP_ID: &str = "io.github.aitemaa.kavox";
 pub const AUTOSTART_FLAG: &str = "--autostart";
-pub const AUDIO_EXTENSIONS: &[&str] = &["wav", "mp3", "ogg", "oga", "flac"];
 pub const VB_CABLE_URL: &str = "https://vb-audio.com/Cable/";
 pub const REPO_URL: &str = "https://github.com/Aitemaa/Kavox";
 
@@ -119,7 +118,7 @@ pub fn open_sound_settings() -> Result<(), String> {
 pub fn pick_audio_files() -> Vec<PathBuf> {
     rfd::FileDialog::new()
         .set_title("Add sounds")
-        .add_filter("Audio", AUDIO_EXTENSIONS)
+        .add_filter("Audio", kavox_core::clip::SUPPORTED_EXTENSIONS)
         .pick_files()
         .unwrap_or_default()
 }

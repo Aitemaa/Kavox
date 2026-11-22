@@ -86,6 +86,7 @@ pub struct ImportDone {
 pub enum AppCommand {
     CoreEvent(UiEvent),
     ImportFinished(Result<ImportDone, String>),
+    DevicesRefreshed(DeviceList),
     ShowWindow,
     Quit,
 }
@@ -119,7 +120,7 @@ pub struct UiState {
     pub dialog: Option<Dialog>,
     pub settings_tab: SettingsTab,
     pub wizard_step: usize,
-    pub wizard_checking: bool,
+    pub devices_rescanning: bool,
     pub compositor: Compositor,
     pub confirm: Option<Confirm>,
 
@@ -207,7 +208,7 @@ impl UiState {
             dialog,
             settings_tab: SettingsTab::Audio,
             wizard_step: 0,
-            wizard_checking: false,
+            devices_rescanning: false,
             compositor: Compositor::Niri,
             confirm: None,
             renaming_board: None,
@@ -265,12 +266,17 @@ impl UiState {
         self.toasts.retain(|t| t.expires_at > now);
     }
 
-    pub fn active_board(&self) -> Option<&Board> {
+    pub fn active_board_index(&self) -> Option<usize> {
         self.library
             .boards
             .iter()
-            .find(|b| b.id == self.library.active_board)
-            .or_else(|| self.library.boards.first())
+            .position(|b| b.id == self.library.active_board)
+            .or_else(|| (!self.library.boards.is_empty()).then_some(0))
+    }
+
+    pub fn active_board(&self) -> Option<&Board> {
+        self.active_board_index()
+            .and_then(|idx| self.library.boards.get(idx))
     }
 
     pub fn open_settings(&mut self, tab: SettingsTab) {
@@ -331,7 +337,6 @@ impl UiState {
             UiEvent::Levels(levels) => self.levels = levels,
             UiEvent::Devices(devices) => {
                 self.devices = devices;
-                self.wizard_checking = false;
             }
             UiEvent::VirtualStatus(status) => self.virtual_status = status,
             UiEvent::Library(library) => {
@@ -571,6 +576,21 @@ pub fn spawn_pick_and_import(
             ctx.request_repaint();
         })
         .ok();
+}
+
+pub fn spawn_rescan_devices(
+    controller: Controller,
+    tx: Sender<AppCommand>,
+    ctx: eframe::egui::Context,
+) -> bool {
+    thread::Builder::new()
+        .name("kavox-devices".into())
+        .spawn(move || {
+            let fresh = controller.rescan_devices();
+            let _ = tx.send(AppCommand::DevicesRefreshed(fresh));
+            ctx.request_repaint();
+        })
+        .is_ok()
 }
 
 fn import_blocking(

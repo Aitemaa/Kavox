@@ -34,6 +34,20 @@ impl<'a> ActionCtx<'a> {
         );
     }
 
+    pub fn rescan_devices(&self, state: &mut UiState) {
+        if state.devices_rescanning {
+            return;
+        }
+        state.devices_rescanning = true;
+        if !crate::state::spawn_rescan_devices(
+            self.controller.clone(),
+            self.cmd_tx.clone(),
+            self.egui_ctx.clone(),
+        ) {
+            state.devices_rescanning = false;
+        }
+    }
+
     pub fn set_sound_hotkey(&mut self, id: &str, hotkey_str: Option<String>) -> Result<(), String> {
         if let Some(h) = &hotkey_str {
             hotkey::validate(h).map_err(|e| format!("{h} can't be used as a hotkey: {e}"))?;

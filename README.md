@@ -117,7 +117,7 @@ cd Kavox
 ./scripts/install.sh --deps
 ```
 
-`--deps` installs build dependencies with pacman, apt or dnf, and asks for your password. Leave it off if you already have Rust 1.88+ and the development packages for `libpulse` and `libxkbcommon`.
+`--deps` installs build dependencies with pacman, apt or dnf, and asks for your password. Leave it off if you already have Rust 1.95+ and the development packages for `libpulse` and `libxkbcommon`.
 
 This puts `kavox` and `kavoxctl` in `~/.local/bin` and adds Kavox to your app launcher. Set `PREFIX` to install somewhere else. Kavox needs PulseAudio, or PipeWire with pipewire-pulse. It creates its own "Kavox Mic" while it runs, so there's no driver to install.
 
@@ -129,7 +129,7 @@ To update on either platform, run `git pull` in the Kavox folder and run the ins
 
 ## Development
 
-You only need Rust 1.88+.
+You only need Rust 1.95+.
 
 - **Linux:** `libpulse` (PulseAudio, or PipeWire with pipewire-pulse) and `libxkbcommon`.
 - **Windows:** [VB-CABLE](https://vb-audio.com/Cable/) to hear sounds in voice apps.

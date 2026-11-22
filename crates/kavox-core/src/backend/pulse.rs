@@ -80,27 +80,11 @@ impl AudioBackend for PulseBackend {
     }
 
     fn list_devices(&mut self) -> Result<DeviceList> {
-        let mut pulse = Pulse::connect()?;
-        let (default_sink, default_source) = pulse.server_defaults()?;
-        let (sinks, sources) = pulse.devices()?;
-        let info = |(id, label): (String, String), default: &Option<String>| DeviceInfo {
-            is_default: default.as_deref() == Some(id.as_str()),
-            id,
-            label,
-        };
-        Ok(DeviceList {
-            outputs: sinks
-                .into_iter()
-                .filter(|(id, _)| id != SINK)
-                .map(|d| info(d, &default_sink))
-                .collect(),
-            inputs: sources
-                .into_iter()
-                .filter(|(id, _)| id != SOURCE)
-                .map(|d| info(d, &default_source))
-                .collect(),
-            virtual_candidates: Vec::new(),
-        })
+        enumerate_devices()
+    }
+
+    fn enumerator(&self) -> Option<super::DeviceEnumerator> {
+        Some(enumerate_devices)
     }
 
     fn resolve_virtual(
@@ -453,4 +437,28 @@ fn iterate(mainloop: &mut Mainloop) -> Result<()> {
         IterateResult::Quit(_) => Err(Error::Device("pulse mainloop quit".into())),
         IterateResult::Err(e) => Err(Error::Device(format!("pulse mainloop: {e}"))),
     }
+}
+
+fn enumerate_devices() -> Result<DeviceList> {
+    let mut pulse = Pulse::connect()?;
+    let (default_sink, default_source) = pulse.server_defaults()?;
+    let (sinks, sources) = pulse.devices()?;
+    let info = |(id, label): (String, String), default: &Option<String>| DeviceInfo {
+        is_default: default.as_deref() == Some(id.as_str()),
+        id,
+        label,
+    };
+    Ok(DeviceList {
+        outputs: sinks
+            .into_iter()
+            .filter(|(id, _)| id != SINK)
+            .map(|d| info(d, &default_sink))
+            .collect(),
+        inputs: sources
+            .into_iter()
+            .filter(|(id, _)| id != SOURCE)
+            .map(|d| info(d, &default_source))
+            .collect(),
+        virtual_candidates: Vec::new(),
+    })
 }

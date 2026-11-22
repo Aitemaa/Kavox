@@ -69,32 +69,11 @@ impl AudioBackend for WasapiBackend {
     }
 
     fn list_devices(&mut self) -> Result<DeviceList> {
-        let host = cpal::default_host();
-        let default_in = host.default_input_device().and_then(|d| d.name().ok());
-        let default_out = host.default_output_device().and_then(|d| d.name().ok());
-        let info = |name: String, default: &Option<String>| DeviceInfo {
-            is_default: default.as_deref() == Some(name.as_str()),
-            label: name.clone(),
-            id: name,
-        };
-        let outputs: Vec<DeviceInfo> = names(host.output_devices().map_err(device_err)?)
-            .into_iter()
-            .map(|n| info(n, &default_out))
-            .collect();
-        let mut virtual_candidates: Vec<String> = outputs
-            .iter()
-            .filter(|d| is_cable(&d.id))
-            .map(|d| d.id.clone())
-            .collect();
-        virtual_candidates.sort_by_key(|id| CABLE_PATTERNS.iter().position(|p| id.contains(p)));
-        Ok(DeviceList {
-            inputs: names(host.input_devices().map_err(device_err)?)
-                .into_iter()
-                .map(|n| info(n, &default_in))
-                .collect(),
-            outputs,
-            virtual_candidates,
-        })
+        enumerate_devices()
+    }
+
+    fn enumerator(&self) -> Option<super::DeviceEnumerator> {
+        Some(enumerate_devices)
     }
 
     fn resolve_virtual(
@@ -337,4 +316,33 @@ fn spawn_stream(
         }
         Err(_) => Err(Error::Device("audio thread exited".into())),
     }
+}
+
+fn enumerate_devices() -> Result<DeviceList> {
+    let host = cpal::default_host();
+    let default_in = host.default_input_device().and_then(|d| d.name().ok());
+    let default_out = host.default_output_device().and_then(|d| d.name().ok());
+    let info = |name: String, default: &Option<String>| DeviceInfo {
+        is_default: default.as_deref() == Some(name.as_str()),
+        label: name.clone(),
+        id: name,
+    };
+    let outputs: Vec<DeviceInfo> = names(host.output_devices().map_err(device_err)?)
+        .into_iter()
+        .map(|n| info(n, &default_out))
+        .collect();
+    let mut virtual_candidates: Vec<String> = outputs
+        .iter()
+        .filter(|d| is_cable(&d.id))
+        .map(|d| d.id.clone())
+        .collect();
+    virtual_candidates.sort_by_key(|id| CABLE_PATTERNS.iter().position(|p| id.contains(p)));
+    Ok(DeviceList {
+        inputs: names(host.input_devices().map_err(device_err)?)
+            .into_iter()
+            .map(|n| info(n, &default_in))
+            .collect(),
+        outputs,
+        virtual_candidates,
+    })
 }

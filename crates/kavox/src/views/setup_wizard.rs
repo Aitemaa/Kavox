@@ -344,21 +344,18 @@ fn show_cable_step(ui: &mut Ui, p: &Palette, state: &mut UiState, actions: &mut 
         && pill_button(
             ui,
             p,
-            if state.wizard_checking {
+            if state.devices_rescanning {
                 "Checking…"
             } else {
                 "Check again"
             },
             None,
             ButtonVariant::Default,
-            !state.wizard_checking,
+            !state.devices_rescanning,
         )
         .clicked()
     {
-        state.wizard_checking = true;
-        let fresh = actions.controller.lock().devices();
-        state.devices = fresh;
-        state.wizard_checking = false;
+        actions.rescan_devices(state);
     }
 }
 

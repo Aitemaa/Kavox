@@ -393,9 +393,21 @@ fn show_audio_tab(ui: &mut Ui, p: &Palette, state: &mut UiState, actions: &mut A
                     .play_test_tone(StreamRole::Monitor);
                 actions.run_or_toast(state, res);
             }
-            if pill_button(ui, p, "Rescan devices", None, ButtonVariant::Default, true).clicked() {
-                let fresh = actions.controller.lock().devices();
-                state.devices = fresh;
+            if pill_button(
+                ui,
+                p,
+                if state.devices_rescanning {
+                    "Rescanning…"
+                } else {
+                    "Rescan devices"
+                },
+                None,
+                ButtonVariant::Default,
+                !state.devices_rescanning,
+            )
+            .clicked()
+            {
+                actions.rescan_devices(state);
             }
         });
     });

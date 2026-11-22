@@ -6,7 +6,7 @@ use eframe::egui::{
     self, Color32, CornerRadius, CursorIcon, Key, Pos2, Rect, ScrollArea, Sense, Stroke,
     StrokeKind, Ui, Vec2, text::LayoutJob,
 };
-use kavox_core::{Retrigger, Sound};
+use kavox_core::{Board, Retrigger, Sound};
 
 use crate::hotkey;
 use crate::icons::{IconName, paint_icon};
@@ -17,30 +17,44 @@ use crate::theme::{
 use crate::views::ActionCtx;
 use crate::widgets::{ButtonVariant, paint_keycaps_at, pill_button};
 
+enum PadAction {
+    Play(String),
+    Stop(String),
+    Edit(String),
+    DragStart(String, Pos2),
+}
+
+enum GridAction {
+    Focus(String),
+    Reorder {
+        board_id: String,
+        sound_id: String,
+        to_idx: usize,
+    },
+    Play(String),
+    Edit(String),
+    Delete(String),
+}
+
 pub fn show(ui: &mut Ui, p: &Palette, state: &mut UiState, actions: &mut ActionCtx<'_>) {
-    let Some(board) = state.active_board().cloned() else {
+    // Prune expired hit flashes once up front so `draw_pad` can borrow `state` immutably.
+    state
+        .pad_hit_at
+        .retain(|_, hit_at| hit_at.elapsed() < Duration::from_millis(300));
+
+    let Some(board_idx) = state.active_board_index() else {
         return;
-    };
-
-    let all: Vec<Sound> = board
-        .sounds
-        .iter()
-        .filter_map(|id| state.library.sounds.get(id).cloned())
-        .collect();
-
-    let query = state.search.trim().to_lowercase();
-    let sounds: Vec<Sound> = if query.is_empty() {
-        all.clone()
-    } else {
-        all.iter()
-            .filter(|s| s.name.to_lowercase().contains(&query))
-            .cloned()
-            .collect()
     };
 
     let narrow = ui.ctx().content_rect().width() < 720.0;
     let pad_x = if narrow { 16.0 } else { 20.0 };
     let pad_top = if narrow { 14.0 } else { 20.0 };
+
+    let mut grid_action: Option<GridAction> = None;
+    let mut pad_action: Option<PadAction> = None;
+    let mut activate_drag = false;
+    let mut end_drag = false;
+    let mut reorder_request: Option<(String, String, usize)> = None;
 
     ScrollArea::vertical()
         .id_salt("pad-grid-scroll")
@@ -56,11 +70,24 @@ pub fn show(ui: &mut Ui, p: &Palette, state: &mut UiState, actions: &mut ActionC
                 .show(ui, |ui| {
                     ui.set_width(ui.available_width());
 
-                    if all.is_empty() {
+                    let board = &state.library.boards[board_idx];
+                    let query = state.search.trim().to_lowercase();
+                    let mut has_any_sound = false;
+                    let mut visible: Vec<(usize, &Sound)> = Vec::new();
+                    for (board_pos, id) in board.sounds.iter().enumerate() {
+                        if let Some(sound) = state.library.sounds.get(id) {
+                            has_any_sound = true;
+                            if query.is_empty() || sound.name.to_lowercase().contains(&query) {
+                                visible.push((board_pos, sound));
+                            }
+                        }
+                    }
+
+                    if !has_any_sound {
                         show_empty_board(ui, p, &board.name, state, actions);
                         return;
                     }
-                    if sounds.is_empty() {
+                    if visible.is_empty() {
                         ui.add_space(24.0);
                         ui.label(
                             egui::RichText::new(format!(
@@ -85,29 +112,26 @@ pub fn show(ui: &mut Ui, p: &Palette, state: &mut UiState, actions: &mut ActionC
                         (tile_w * 4.0 / 5.0).max(112.0)
                     };
 
-                    // Keyboard grid navigation when no dialog/text input has focus.
+                    // Keyboard grid navigation when no dialog/text input/hotkey recorder owns keys.
                     if state.dialog.is_none()
                         && state.confirm.is_none()
                         && state.recording_hotkey.is_none()
                         && !ui.ctx().egui_wants_keyboard_input()
                     {
-                        handle_grid_keyboard(
-                            ui,
-                            state,
-                            actions,
-                            &board.id,
-                            &sounds,
-                            cols,
-                            query.is_empty(),
-                        );
+                        grid_action =
+                            check_grid_keyboard(ui, state, board, &visible, cols, query.is_empty());
                     }
 
                     let show_add = query.is_empty();
-                    let total_items = sounds.len() + usize::from(show_add);
+                    let total_items = visible.len() + usize::from(show_add);
                     let rows = total_items.div_ceil(cols);
 
-                    let mut slot_rects: Vec<(String, Rect)> = Vec::with_capacity(sounds.len());
-                    let mut reorder_request: Option<(String, usize)> = None;
+                    let track_slots = state.dragging_pad.is_some();
+                    let mut slot_rects: Vec<(usize, Rect)> = if track_slots {
+                        Vec::with_capacity(visible.len())
+                    } else {
+                        Vec::new()
+                    };
 
                     for row in 0..rows {
                         if row > 0 {
@@ -117,19 +141,23 @@ pub fn show(ui: &mut Ui, p: &Palette, state: &mut UiState, actions: &mut ActionC
                             ui.spacing_mut().item_spacing.x = gap;
                             for col in 0..cols {
                                 let idx = row * cols + col;
-                                if idx < sounds.len() {
-                                    let sound = &sounds[idx];
-                                    let rect = draw_pad(
+                                if idx < visible.len() {
+                                    let (board_pos, sound) = visible[idx];
+                                    let (rect, action) = draw_pad(
                                         ui,
                                         p,
                                         state,
-                                        actions,
                                         sound,
                                         Vec2::new(tile_w, tile_h),
                                         query.is_empty(),
                                     );
-                                    slot_rects.push((sound.id.clone(), rect));
-                                } else if idx == sounds.len() && show_add {
+                                    if action.is_some() {
+                                        pad_action = action;
+                                    }
+                                    if track_slots {
+                                        slot_rects.push((board_pos, rect));
+                                    }
+                                } else if idx == visible.len() && show_add {
                                     draw_add_pad(ui, p, state, actions, Vec2::new(tile_w, tile_h));
                                 }
                             }
@@ -137,18 +165,21 @@ pub fn show(ui: &mut Ui, p: &Palette, state: &mut UiState, actions: &mut ActionC
                     }
 
                     // Complete or cancel pointer drag-to-reorder.
-                    if let Some(dragged_id) = state.dragging_pad.clone() {
+                    if let Some(dragged_id) = state.dragging_pad.as_deref() {
                         if ui.input(|i| i.pointer.primary_down()) {
                             if let Some(pos) = ui.input(|i| i.pointer.interact_pos()) {
-                                if !state.drag_active && pos.distance(state.drag_origin) >= 6.0 {
-                                    state.drag_active = true;
+                                let drag_active =
+                                    state.drag_active || pos.distance(state.drag_origin) >= 6.0;
+                                if drag_active && !state.drag_active {
+                                    activate_drag = true;
                                 }
-                                if state.drag_active {
+                                if drag_active {
                                     ui.ctx().set_cursor_icon(CursorIcon::Grabbing);
                                     // Highlight target drop slot
-                                    if let Some((_, target_rect)) = slot_rects
-                                        .iter()
-                                        .find(|(id, r)| id != &dragged_id && r.contains(pos))
+                                    if let Some((_, target_rect)) =
+                                        slot_rects.iter().find(|(pos_idx, r)| {
+                                            board.sounds[*pos_idx] != dragged_id && r.contains(pos)
+                                        })
                                     {
                                         ui.painter().rect_stroke(
                                             *target_rect,
@@ -162,36 +193,76 @@ pub fn show(ui: &mut Ui, p: &Palette, state: &mut UiState, actions: &mut ActionC
                         } else {
                             if state.drag_active
                                 && let Some(pos) = ui.input(|i| i.pointer.interact_pos())
-                                && let Some((target_id, _)) = slot_rects
-                                    .iter()
-                                    .find(|(id, r)| id != &dragged_id && r.contains(pos))
-                                && let Some(to_idx) =
-                                    board.sounds.iter().position(|id| id == target_id)
+                                && let Some(&(to_idx, _)) =
+                                    slot_rects.iter().find(|(pos_idx, r)| {
+                                        board.sounds[*pos_idx] != dragged_id && r.contains(pos)
+                                    })
                             {
-                                reorder_request = Some((dragged_id, to_idx));
+                                reorder_request =
+                                    Some((board.id.clone(), dragged_id.to_owned(), to_idx));
                             }
-                            state.dragging_pad = None;
-                            state.drag_active = false;
+                            end_drag = true;
                         }
-                    }
-
-                    if let Some((id, to_idx)) = reorder_request {
-                        move_sound(state, actions, &board.id, &id, to_idx);
                     }
                 });
         });
+
+    if activate_drag {
+        state.drag_active = true;
+    }
+    if end_drag {
+        state.dragging_pad = None;
+        state.drag_active = false;
+    }
+    if let Some((board_id, id, to_idx)) = reorder_request {
+        move_sound(state, actions, &board_id, &id, to_idx);
+    }
+
+    if let Some(action) = grid_action {
+        match action {
+            GridAction::Focus(next_id) => state.focused_pad = Some(next_id),
+            GridAction::Reorder {
+                board_id,
+                sound_id,
+                to_idx,
+            } => move_sound(state, actions, &board_id, &sound_id, to_idx),
+            GridAction::Play(id) => {
+                state.pad_hit_at.insert(id.clone(), Instant::now());
+                let res = actions.controller.lock().play_sound(&id);
+                actions.run_or_toast(state, res);
+            }
+            GridAction::Edit(id) => state.start_editing(id),
+            GridAction::Delete(id) => state.confirm_delete_sound(&id),
+        }
+    }
+
+    if let Some(action) = pad_action {
+        match action {
+            PadAction::DragStart(id, pos) => {
+                state.dragging_pad = Some(id);
+                state.drag_origin = pos;
+                state.drag_active = false;
+            }
+            PadAction::Edit(id) => state.start_editing(id),
+            PadAction::Stop(id) => actions.controller.lock().stop_sound(&id),
+            PadAction::Play(id) => {
+                state.focused_pad = Some(id.clone());
+                state.pad_hit_at.insert(id.clone(), Instant::now());
+                let res = actions.controller.lock().play_sound(&id);
+                actions.run_or_toast(state, res);
+            }
+        }
+    }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn draw_pad(
     ui: &mut Ui,
     p: &Palette,
-    state: &mut UiState,
-    actions: &mut ActionCtx<'_>,
+    state: &UiState,
     sound: &Sound,
     size: Vec2,
     can_drag: bool,
-) -> Rect {
+) -> (Rect, Option<PadAction>) {
     let voices = state.playing.get(&sound.id);
     let playing = voices.is_some_and(|v| !v.is_empty());
     let progress = voices
@@ -240,6 +311,8 @@ fn draw_pad(
         ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
     }
 
+    let mut action = None;
+
     // Drag start tracking
     if can_drag
         && response.drag_started()
@@ -247,21 +320,16 @@ fn draw_pad(
         && !over_stop
         && let Some(pos) = response.interact_pointer_pos()
     {
-        state.dragging_pad = Some(sound.id.clone());
-        state.drag_origin = pos;
-        state.drag_active = false;
+        action = Some(PadAction::DragStart(sound.id.clone(), pos));
     }
 
     // Click actions
     if edit_resp.clicked() || response.secondary_clicked() {
-        state.start_editing(sound.id.clone());
+        action = Some(PadAction::Edit(sound.id.clone()));
     } else if stop_resp.as_ref().is_some_and(|r| r.clicked()) {
-        actions.controller.lock().stop_sound(&sound.id);
+        action = Some(PadAction::Stop(sound.id.clone()));
     } else if response.clicked() && !state.drag_active && !over_edit && !over_stop {
-        state.focused_pad = Some(sound.id.clone());
-        state.pad_hit_at.insert(sound.id.clone(), Instant::now());
-        let res = actions.controller.lock().play_sound(&sound.id);
-        actions.run_or_toast(state, res);
+        action = Some(PadAction::Play(sound.id.clone()));
     }
 
     if ui.is_rect_visible(rect) {
@@ -383,7 +451,7 @@ fn draw_pad(
             }
         }
 
-        // Hit flash overlay (300ms ease-out from 0.10 to 0)
+        // Hit flash overlay (300ms ease-out from 0.10 to 0; expired entries pruned in `show`)
         if let Some(hit_at) = state.pad_hit_at.get(&sound.id).copied() {
             let elapsed = hit_at.elapsed();
             if elapsed < Duration::from_millis(300) {
@@ -395,8 +463,6 @@ fn draw_pad(
                     with_alpha(p.text, flash_alpha),
                 );
                 ui.ctx().request_repaint();
-            } else {
-                state.pad_hit_at.remove(&sound.id);
             }
         }
 
@@ -446,7 +512,7 @@ fn draw_pad(
         }
     }
 
-    rect
+    (rect, action)
 }
 
 fn draw_add_pad(
@@ -569,21 +635,16 @@ fn show_empty_board(
     });
 }
 
-fn handle_grid_keyboard(
+fn check_grid_keyboard(
     ui: &Ui,
-    state: &mut UiState,
-    actions: &mut ActionCtx<'_>,
-    board_id: &str,
-    sounds: &[Sound],
+    state: &UiState,
+    board: &Board,
+    visible: &[(usize, &Sound)],
     cols: usize,
     can_reorder: bool,
-) {
-    let Some(focused_id) = state.focused_pad.clone() else {
-        return;
-    };
-    let Some(idx) = sounds.iter().position(|s| s.id == focused_id) else {
-        return;
-    };
+) -> Option<GridAction> {
+    let focused_id = state.focused_pad.as_deref()?;
+    let idx = visible.iter().position(|(_, s)| s.id == focused_id)?;
 
     let (arrow, alt, play, edit, delete) = ui.input(|i| {
         let arrow = if i.key_pressed(Key::ArrowLeft) {
@@ -608,26 +669,27 @@ fn handle_grid_keyboard(
 
     if let Some(delta) = arrow {
         let next = idx as isize + delta;
-        if next >= 0 && (next as usize) < sounds.len() {
-            let next_id = sounds[next as usize].id.clone();
-            if alt && can_reorder {
-                if let Some(board) = state.library.boards.iter().find(|b| b.id == board_id)
-                    && let Some(target_idx) = board.sounds.iter().position(|id| id == &next_id)
-                {
-                    move_sound(state, actions, board_id, &focused_id, target_idx);
+        if next >= 0 && (next as usize) < visible.len() {
+            let (target_idx, next_sound) = visible[next as usize];
+            return Some(if alt && can_reorder {
+                GridAction::Reorder {
+                    board_id: board.id.clone(),
+                    sound_id: focused_id.to_owned(),
+                    to_idx: target_idx,
                 }
             } else {
-                state.focused_pad = Some(next_id);
-            }
+                GridAction::Focus(next_sound.id.clone())
+            });
         }
+        None
     } else if play {
-        state.pad_hit_at.insert(focused_id.clone(), Instant::now());
-        let res = actions.controller.lock().play_sound(&focused_id);
-        actions.run_or_toast(state, res);
+        Some(GridAction::Play(focused_id.to_owned()))
     } else if edit {
-        state.start_editing(focused_id);
+        Some(GridAction::Edit(focused_id.to_owned()))
     } else if delete {
-        state.confirm_delete_sound(&focused_id);
+        Some(GridAction::Delete(focused_id.to_owned()))
+    } else {
+        None
     }
 }
 

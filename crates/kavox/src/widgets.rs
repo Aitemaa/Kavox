@@ -577,16 +577,18 @@ pub fn hotkey_recorder(
             }
 
             if recording {
-                // Capture next non-modifier key press while recording.
+                // Capture next non-modifier key press while recording and consume it so
+                // downstream widgets/views (e.g. pad grid shortcuts) don't also handle it.
                 let mut result: Option<RecordResult> = None;
-                ui.input(|i| {
+                ui.input_mut(|i| {
                     let super_down = i.key_down(egui::Key::SuperLeft)
                         || i.key_down(egui::Key::SuperRight)
                         || i.modifiers.mac_cmd
                         || (i.modifiers.command && !i.modifiers.ctrl)
                         || hotkey::platform_super_down();
 
-                    for ev in &i.events {
+                    let mut consumed_idx: Option<usize> = None;
+                    for (idx, ev) in i.events.iter().enumerate() {
                         match ev {
                             egui::Event::Key {
                                 key,
@@ -606,30 +608,23 @@ pub fn hotkey_recorder(
                                 );
                                 if r != RecordResult::Ignore {
                                     result = Some(r);
+                                    consumed_idx = Some(idx);
                                     break;
                                 }
-                            }
-                            egui::Event::Copy => {
-                                result = Some(hotkey::from_token("C", i.modifiers, super_down));
-                                break;
-                            }
-                            egui::Event::Cut => {
-                                result = Some(hotkey::from_token("X", i.modifiers, super_down));
-                                break;
-                            }
-                            egui::Event::Paste(_) => {
-                                result = Some(hotkey::from_token("V", i.modifiers, super_down));
-                                break;
                             }
                             egui::Event::Text(text) => {
                                 if let Some(tok) = hotkey::platform_numpad_for_text(text) {
                                     result =
                                         Some(hotkey::from_token(tok, i.modifiers, super_down));
+                                    consumed_idx = Some(idx);
                                     break;
                                 }
                             }
                             _ => {}
                         }
+                    }
+                    if let Some(idx) = consumed_idx {
+                        i.events.remove(idx);
                     }
                 });
                 if let Some(res) = result {

@@ -16,7 +16,7 @@ ICONS_DIR="$PREFIX/share/icons/hicolor"
 DESKTOP_FILE="$APPS_DIR/$APP_ID.desktop"
 AUTOSTART_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/autostart/Kavox.desktop"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-MIN_RUST="1.88"
+MIN_RUST="1.95"
 
 say() { printf '\033[1;35m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33mwarning:\033[0m %s\n' "$*" >&2; }
