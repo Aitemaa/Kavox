@@ -50,6 +50,20 @@ flowchart LR
 
 Details are in the [technical design](docs/TECH.md).
 
+## Performance & footprint
+
+Kavox runs as a single native Rust process (`egui`/`eframe` + OpenGL) instead of embedding a WebView runtime. Measured head-to-head on Linux Wayland (`niri`) with the same board and settings:
+
+| Metric | Previous (Tauri 2 + WebKitGTK) | Native Rust (`egui`/`eframe`) | Change |
+|---|---:|---:|---:|
+| Total RAM (full process tree, RSS) | 478.4 MiB | **79.2 MiB** | **-83.4% (6.0× less)** |
+| OS processes | 3 (`kavox` + 2 WebKit) | **1** | **-66.7%** |
+| Cold startup to IPC ready | 646 ms | **204 ms** | **3.2× faster** |
+| Release binary (`kavox`) | 15.87 MiB | **12.35 MiB** | **-22.2%** |
+| Linked shared libraries (`ldd`) | 157 | **23** | **-85.4%** |
+| External WebView runtime | WebKitGTK / WebView2 | **None** | **Eliminated** |
+| Build dependencies | Rust + Node.js + 93 npm pkgs | **Rust only** | **-100% npm** |
+
 ## Status
 
 **v0.1 is built** and runs on Linux. Windows builds but still needs testing on real hardware. See the [PRD](docs/PRD.md) and [technical design](docs/TECH.md).
