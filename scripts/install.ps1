@@ -1,7 +1,7 @@
 # Builds Kavox from source and installs it for the current user (no admin rights needed).
 #
 #   powershell -ExecutionPolicy Bypass -File scripts\install.ps1               build and install
-#   powershell -ExecutionPolicy Bypass -File scripts\install.ps1 -InstallDeps  first install Rust, Node.js and C++ build tools with winget
+#   powershell -ExecutionPolicy Bypass -File scripts\install.ps1 -InstallDeps  first install Rust and C++ build tools with winget
 #   powershell -ExecutionPolicy Bypass -File scripts\install.ps1 -Uninstall    remove Kavox (your sounds and settings are kept)
 param(
     [switch]$InstallDeps,
@@ -14,7 +14,6 @@ $InstallDir = Join-Path $env:LOCALAPPDATA 'Programs\Kavox'
 $Shortcut = Join-Path ([Environment]::GetFolderPath('Programs')) 'Kavox.lnk'
 $Root = Split-Path -Parent $PSScriptRoot
 $MinRust = [version]'1.88'
-$MinNode = [version]'20.19'
 
 function Say($Message) { Write-Host "==> $Message" -ForegroundColor Magenta }
 function Warn($Message) { Write-Host "warning: $Message" -ForegroundColor Yellow }
@@ -86,11 +85,6 @@ if ($InstallDeps) {
         Run winget @('install', '--id', 'Rustlang.Rustup', '-e', '--accept-package-agreements', '--accept-source-agreements')
         $installed = $true
     }
-    if (-not (Has npm)) {
-        Say 'Installing Node.js LTS'
-        Run winget @('install', '--id', 'OpenJS.NodeJS.LTS', '-e', '--accept-package-agreements', '--accept-source-agreements')
-        $installed = $true
-    }
     if ($installed) {
         Say 'Tools installed. Open a new PowerShell window and run this script again (without -InstallDeps) so it sees them.'
         exit 0
@@ -102,9 +96,6 @@ if (-not (Test-CppBuildTools)) { Die 'Visual Studio C++ build tools are missing.
 if (-not (Has cargo)) { Die 'Rust is missing. Run this script with -InstallDeps, or get it from https://rustup.rs' }
 $rust = [version](((& rustc --version) -split ' ')[1] -replace '-.*$', '')
 if ($rust -lt $MinRust) { Die "Rust $rust is too old; Kavox needs $MinRust or newer. Run: rustup update stable" }
-if (-not (Has npm)) { Die 'Node.js is missing. Run this script with -InstallDeps, or get it from https://nodejs.org' }
-$node = [version]((& node --version).TrimStart('v'))
-if ($node -lt $MinNode) { Die "Node.js $node is too old; Kavox needs $MinNode or newer." }
 
 # VB-CABLE is how sounds reach voice apps; Kavox still runs without it, so only warn.
 $cable = Get-CimInstance Win32_SoundDevice -ErrorAction SilentlyContinue | Where-Object { $_.Name -like '*VB-Audio*' }
@@ -113,12 +104,8 @@ if (-not $cable) { Warn 'VB-CABLE isn''t installed yet. Kavox will walk you thro
 # Build.
 Push-Location $Root
 try {
-    Say 'Installing frontend packages'
-    if (Test-Path 'package-lock.json') { Run npm.cmd @('ci', '--no-fund', '--no-audit') } else { Run npm.cmd @('install', '--no-fund', '--no-audit') }
-    Say 'Building Kavox (the first build takes a few minutes)'
-    Run npx.cmd @('tauri', 'build', '--no-bundle')
-    Say 'Building kavoxctl'
-    Run cargo @('build', '--release', '-p', 'kavoxctl')
+    Say 'Building Kavox and kavoxctl (the first build takes a minute)'
+    Run cargo @('build', '--release', '-p', 'kavox', '-p', 'kavoxctl')
 }
 finally {
     Pop-Location

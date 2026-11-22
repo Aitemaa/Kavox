@@ -17,6 +17,7 @@ pub enum Request {
     StopAll,
     Mute { mode: MuteMode },
     List,
+    Show,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

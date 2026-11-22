@@ -17,7 +17,6 @@ DESKTOP_FILE="$APPS_DIR/$APP_ID.desktop"
 AUTOSTART_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/autostart/Kavox.desktop"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MIN_RUST="1.88"
-MIN_NODE="20.19"
 
 say() { printf '\033[1;35m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33mwarning:\033[0m %s\n' "$*" >&2; }
@@ -47,19 +46,17 @@ uninstall() {
 install_deps() {
     if command -v pacman >/dev/null; then
         say "Installing build dependencies with pacman"
-        sudo pacman -S --needed base-devel rustup nodejs npm webkit2gtk-4.1 libpulse libayatana-appindicator librsvg
+        sudo pacman -S --needed base-devel rustup libpulse libxkbcommon
         rustup toolchain list | grep -q stable || rustup default stable
     elif command -v apt-get >/dev/null; then
         say "Installing build dependencies with apt"
         sudo apt-get update
-        sudo apt-get install -y build-essential curl file pkg-config libwebkit2gtk-4.1-dev libpulse-dev \
-            libayatana-appindicator3-dev librsvg2-dev libssl-dev
+        sudo apt-get install -y build-essential pkg-config libpulse-dev libxkbcommon-dev libgl1-mesa-dev
     elif command -v dnf >/dev/null; then
         say "Installing build dependencies with dnf"
-        sudo dnf install -y gcc gcc-c++ make curl file pkgconf-pkg-config webkit2gtk4.1-devel \
-            pulseaudio-libs-devel libayatana-appindicator-gtk3-devel librsvg2-devel openssl-devel
+        sudo dnf install -y gcc make pkgconf-pkg-config pulseaudio-libs-devel libxkbcommon-devel mesa-libGL-devel
     else
-        die "--deps supports pacman, apt and dnf. Install these yourself: Rust $MIN_RUST+, Node.js $MIN_NODE+, and the development packages for webkit2gtk-4.1, libpulse and libayatana-appindicator."
+        die "--deps supports pacman, apt and dnf. Install these yourself: Rust $MIN_RUST+, pkg-config, and the development packages for libpulse and libxkbcommon."
     fi
     if ! command -v cargo >/dev/null; then
         warn "Rust isn't installed. Get it from https://rustup.rs (distro Rust packages are often too old), then run this script again."
@@ -72,14 +69,9 @@ check_tools() {
     rust="$(rustc --version | awk '{print $2}')"
     version_ge "$rust" "$MIN_RUST" || die "Rust $rust is too old; Kavox needs $MIN_RUST or newer. Run: rustup update stable"
 
-    command -v npm >/dev/null || die "Node.js isn't installed. Install Node.js $MIN_NODE or newer (https://nodejs.org), or run with --deps."
-    local node
-    node="$(node --version | tr -d v)"
-    version_ge "$node" "$MIN_NODE" || die "Node.js $node is too old; Kavox needs $MIN_NODE or newer."
-
     command -v pkg-config >/dev/null || die "pkg-config isn't installed. Run this script with --deps."
     local missing=()
-    for lib in webkit2gtk-4.1 libpulse libpulse-simple; do
+    for lib in libpulse libpulse-simple; do
         pkg-config --exists "$lib" || missing+=("$lib")
     done
     [ ${#missing[@]} -eq 0 ] || die "Missing development libraries: ${missing[*]}. Run this script with --deps."
@@ -87,12 +79,8 @@ check_tools() {
 
 build() {
     cd "$ROOT"
-    say "Installing frontend packages"
-    if [ -f package-lock.json ]; then npm ci --no-fund --no-audit; else npm install --no-fund --no-audit; fi
-    say "Building Kavox (the first build takes a few minutes)"
-    npx tauri build --no-bundle
-    say "Building kavoxctl"
-    cargo build --release -p kavoxctl
+    say "Building Kavox and kavoxctl (the first build takes a minute)"
+    cargo build --release -p kavox -p kavoxctl
 }
 
 install_files() {
@@ -102,9 +90,9 @@ install_files() {
     fi
     install -Dm755 "$ROOT/target/release/kavox" "$BIN_DIR/kavox"
     install -Dm755 "$ROOT/target/release/kavoxctl" "$BIN_DIR/kavoxctl"
-    install -Dm644 "$ROOT/src-tauri/icons/32x32.png" "$ICONS_DIR/32x32/apps/kavox.png"
-    install -Dm644 "$ROOT/src-tauri/icons/128x128.png" "$ICONS_DIR/128x128/apps/kavox.png"
-    install -Dm644 "$ROOT/src-tauri/icons/128x128@2x.png" "$ICONS_DIR/256x256/apps/kavox.png"
+    install -Dm644 "$ROOT/assets/icons/32x32.png" "$ICONS_DIR/32x32/apps/kavox.png"
+    install -Dm644 "$ROOT/assets/icons/128x128.png" "$ICONS_DIR/128x128/apps/kavox.png"
+    install -Dm644 "$ROOT/assets/icons/128x128@2x.png" "$ICONS_DIR/256x256/apps/kavox.png"
     mkdir -p "$APPS_DIR"
     cat >"$DESKTOP_FILE" <<EOF
 [Desktop Entry]
