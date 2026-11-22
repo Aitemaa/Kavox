@@ -577,25 +577,64 @@ pub fn hotkey_recorder(
             }
 
             if recording {
-                // Capture next key press while recording.
-                let mut key_press: Option<(egui::Key, egui::Modifiers)> = None;
+                // Capture next non-modifier key press while recording.
+                let mut result: Option<RecordResult> = None;
                 ui.input(|i| {
+                    let super_down = i.key_down(egui::Key::SuperLeft)
+                        || i.key_down(egui::Key::SuperRight)
+                        || i.modifiers.mac_cmd
+                        || (i.modifiers.command && !i.modifiers.ctrl)
+                        || hotkey::platform_super_down();
+
                     for ev in &i.events {
-                        if let egui::Event::Key {
-                            key,
-                            pressed: true,
-                            repeat: false,
-                            modifiers,
-                            ..
-                        } = ev
-                        {
-                            key_press = Some((*key, *modifiers));
-                            break;
+                        match ev {
+                            egui::Event::Key {
+                                key,
+                                physical_key,
+                                pressed: true,
+                                repeat: false,
+                                modifiers,
+                            } => {
+                                let eff = physical_key.unwrap_or(*key);
+                                let numpad = hotkey::platform_numpad_for_key(eff);
+                                let r = hotkey::from_egui_event(
+                                    *key,
+                                    *physical_key,
+                                    *modifiers,
+                                    super_down,
+                                    numpad,
+                                );
+                                if r != RecordResult::Ignore {
+                                    result = Some(r);
+                                    break;
+                                }
+                            }
+                            egui::Event::Copy => {
+                                result = Some(hotkey::from_token("C", i.modifiers, super_down));
+                                break;
+                            }
+                            egui::Event::Cut => {
+                                result = Some(hotkey::from_token("X", i.modifiers, super_down));
+                                break;
+                            }
+                            egui::Event::Paste(_) => {
+                                result = Some(hotkey::from_token("V", i.modifiers, super_down));
+                                break;
+                            }
+                            egui::Event::Text(text) => {
+                                if let Some(tok) = hotkey::platform_numpad_for_text(text) {
+                                    result =
+                                        Some(hotkey::from_token(tok, i.modifiers, super_down));
+                                    break;
+                                }
+                            }
+                            _ => {}
                         }
                     }
                 });
-                if let Some((key, mods)) = key_press {
-                    match hotkey::from_egui_key(key, mods) {
+                if let Some(res) = result {
+                    match res {
+                        RecordResult::Ignore => {}
                         RecordResult::Cancel => {
                             state.recording_hotkey = None;
                         }

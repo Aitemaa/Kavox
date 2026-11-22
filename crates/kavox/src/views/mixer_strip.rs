@@ -136,7 +136,9 @@ fn draw_channels(
                                         Some(levels.mic),
                                         mic_off,
                                     ) {
-                                        state.update_audio(actions.controller, |a| a.mic_gain = v);
+                                        state.update_audio_gain(actions.controller, |a| {
+                                            a.mic_gain = v;
+                                        });
                                     }
                                 }
                                 1 => {
@@ -151,7 +153,7 @@ fn draw_channels(
                                         None,
                                         false,
                                     ) {
-                                        state.update_audio(actions.controller, |a| {
+                                        state.update_audio_gain(actions.controller, |a| {
                                             a.global_sound_volume = v;
                                         });
                                     }
@@ -168,7 +170,7 @@ fn draw_channels(
                                         Some(levels.virtual_out),
                                         false,
                                     ) {
-                                        state.update_audio(actions.controller, |a| {
+                                        state.update_audio_gain(actions.controller, |a| {
                                             a.sounds_to_mic_gain = v;
                                         });
                                     }
@@ -190,7 +192,7 @@ fn draw_channels(
                                         Some(levels.monitor),
                                         !audio.monitor_enabled,
                                     ) {
-                                        state.update_audio(actions.controller, |a| {
+                                        state.update_audio_gain(actions.controller, |a| {
                                             a.sounds_to_monitor_gain = v;
                                         });
                                     }

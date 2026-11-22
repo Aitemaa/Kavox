@@ -1,11 +1,10 @@
 //! Main `eframe::App` shell: coordinates core events, layout panels, overlays, drag-drop, and lifecycle.
 
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::sync::mpsc::{Receiver, Sender};
 
 use eframe::egui::{self, Frame, Key, Pos2, Stroke};
-use kavox_core::{Controller, NoticeLevel};
+use kavox_core::{Controller, NoticeLevel, UiEvent};
 
 use crate::hotkey::HotkeyService;
 use crate::state::{AppCommand, UiState, View};
@@ -16,11 +15,12 @@ use crate::views::{self, ActionCtx};
 pub struct KavoxApp {
     controller: Controller,
     hotkeys: HotkeyService,
-    tray: Arc<TrayHandle>,
+    tray: TrayHandle,
     cmd_tx: Sender<AppCommand>,
     cmd_rx: Receiver<AppCommand>,
     state: UiState,
     last_dark_mode: Option<bool>,
+    last_core_visible: bool,
     shut_down: bool,
     _log_guard: Option<tracing_appender::non_blocking::WorkerGuard>,
 }
@@ -31,18 +31,17 @@ impl KavoxApp {
         cc: &eframe::CreationContext<'_>,
         controller: Controller,
         hotkeys: HotkeyService,
-        tray: Arc<TrayHandle>,
+        tray: TrayHandle,
         cmd_tx: Sender<AppCommand>,
         cmd_rx: Receiver<AppCommand>,
-        mut state: UiState,
+        state: UiState,
         log_guard: Option<tracing_appender::non_blocking::WorkerGuard>,
     ) -> Self {
         theme::install_fonts(&cc.egui_ctx);
-        // Mirror actual OS autostart state without mutating saved settings on startup.
-        state.settings.app.launch_on_login = crate::platform::is_autostart_enabled();
 
         let palette = Palette::resolve(state.settings.app.theme, &cc.egui_ctx);
         theme::apply_visuals(&cc.egui_ctx, &palette);
+        let initial_visible = state.window_visible;
 
         Self {
             controller,
@@ -52,6 +51,7 @@ impl KavoxApp {
             cmd_rx,
             state,
             last_dark_mode: Some(palette.is_dark),
+            last_core_visible: initial_visible,
             shut_down: false,
             _log_guard: log_guard,
         }
@@ -67,10 +67,25 @@ impl KavoxApp {
         self.controller.shutdown();
     }
 
+    fn sync_core_visibility(&mut self, ctx: &egui::Context) {
+        let minimized = ctx.input(|i| i.viewport().minimized == Some(true));
+        let core_visible = self.state.window_visible && !minimized;
+        if core_visible != self.last_core_visible {
+            self.last_core_visible = core_visible;
+            self.controller.lock().set_visible(core_visible);
+        }
+    }
+
     fn drain_commands(&mut self, ctx: &egui::Context) {
         while let Ok(cmd) = self.cmd_rx.try_recv() {
             match cmd {
-                AppCommand::CoreEvent(ev) => self.state.apply_core_event(ev),
+                AppCommand::CoreEvent(ev) => {
+                    if let UiEvent::Settings(settings) = &ev {
+                        self.tray
+                            .sync_state(settings.audio.mic_muted, settings.voice.enabled);
+                    }
+                    self.state.apply_core_event(ev);
+                }
                 AppCommand::ImportFinished(result) => match result {
                     Ok(done) => {
                         if done.added.len() == 1 {
@@ -95,10 +110,13 @@ impl KavoxApp {
                 },
                 AppCommand::ShowWindow => {
                     self.state.window_visible = true;
-                    self.controller.lock().set_visible(true);
                     ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
                     ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
                     ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+                    if !self.last_core_visible {
+                        self.last_core_visible = true;
+                        self.controller.lock().set_visible(true);
+                    }
                 }
                 AppCommand::Quit => {
                     self.state.quitting = true;
@@ -120,12 +138,14 @@ impl eframe::App for KavoxApp {
                 ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
                 ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
                 self.state.window_visible = false;
-                self.controller.lock().set_visible(false);
             } else {
                 self.state.quitting = true;
                 self.shutdown_once();
             }
         }
+
+        // Pause core 30 Hz level metering while hidden in the tray OR minimized.
+        self.sync_core_visibility(ctx);
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {

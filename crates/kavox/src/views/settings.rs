@@ -664,9 +664,9 @@ fn show_app_tab(ui: &mut Ui, p: &Palette, state: &mut UiState, actions: &mut Act
             "app-launch-on-login",
             "Start Kavox when I log in",
             None,
-            app.launch_on_login,
+            state.autostart_enabled,
         ) {
-            state.update_app(actions.controller, |a| a.launch_on_login = next);
+            state.set_launch_on_login(actions.controller, next);
         }
     });
 

@@ -14,7 +14,6 @@ opt-level = "s"
 strip = true
 lto = true
 codegen-units = 1
-panic = "abort"
 
 [profile.release.package.kavox-core]
 opt-level = 3

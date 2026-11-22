@@ -288,7 +288,7 @@ fn draw_pitch_control(
             });
         });
         if let Some(semitones) = linear_slider(ui, p, dial, -12.0, 12.0, 0.5, Some(0.0), p.bg) {
-            state.update_voice(actions.controller, |v| {
+            state.update_voice_pitch(actions.controller, |v| {
                 v.preset = CUSTOM.into();
                 v.semitones = semitones;
                 v.enabled = true;

@@ -31,29 +31,22 @@ use crate::tray::TrayHandle;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// Bridges `kavox-core` events to the UI channel, updates tray state, and wakes `egui`.
+/// Bridges `kavox-core` events to the UI channel without blocking the core lock.
 struct CoreSink {
     tx: Sender<AppCommand>,
-    tray: Arc<Mutex<Option<Arc<TrayHandle>>>>,
 }
 
 impl EventSink for CoreSink {
     fn emit(&self, event: UiEvent) {
-        if let UiEvent::Settings(settings) = &event
-            && let Some(tray) = self.tray.lock().unwrap_or_else(|e| e.into_inner()).as_ref()
-        {
-            tray.set_muted(settings.audio.mic_muted);
-            tray.set_voice_enabled(settings.voice.enabled);
-        }
         let _ = self.tx.send(AppCommand::CoreEvent(event));
     }
 }
 
 fn main() {
-    // Single-instance check: if another Kavox is running, ask it to show its window and exit.
-    if ipc::focus_existing_instance() {
+    // Atomic single-instance lock: if another Kavox is running, ask it to show itself and exit.
+    let Some(_instance_guard) = ipc::acquire_single_instance() else {
         return;
-    }
+    };
 
     let paths = platform::app_paths();
     let log_dir = paths.log_dir.clone();
@@ -80,12 +73,7 @@ fn main() {
             });
     }
 
-    let tray_slot: Arc<Mutex<Option<Arc<TrayHandle>>>> = Arc::new(Mutex::new(None));
-    let sink = Arc::new(CoreSink {
-        tx: raw_tx.clone(),
-        tray: tray_slot.clone(),
-    });
-
+    let sink = Arc::new(CoreSink { tx: raw_tx.clone() });
     let controller = Controller::start(paths, kavox_core::platform_backend(), sink);
     let snapshot = controller.lock().snapshot();
     let app_settings = snapshot.settings.app.clone();
@@ -96,14 +84,6 @@ fn main() {
     for (hk, err) in hotkeys.sync(&controller) {
         tracing::warn!("couldn't register {hk}: {err}");
     }
-
-    let tray = Arc::new(TrayHandle::create(
-        controller.clone(),
-        raw_tx.clone(),
-        initial_muted,
-        initial_voice,
-    ));
-    *tray_slot.lock().unwrap_or_else(|e| e.into_inner()) = Some(tray.clone());
 
     ipc::serve(controller.clone(), raw_tx.clone());
     exit_on_signals(raw_tx.clone());
@@ -144,6 +124,13 @@ fn main() {
         native_options,
         Box::new(move |cc| {
             *egui_ctx.lock().unwrap_or_else(|e| e.into_inner()) = Some(cc.egui_ctx.clone());
+            // Create tray on the main UI thread (required by tray-icon/muda on Windows).
+            let tray = TrayHandle::create(
+                controller.clone(),
+                cmd_tx_for_app.clone(),
+                initial_muted,
+                initial_voice,
+            );
             Ok(Box::new(KavoxApp::new(
                 cc,
                 controller,

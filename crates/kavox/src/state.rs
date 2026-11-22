@@ -145,9 +145,12 @@ pub struct UiState {
     // Voice hotkeys disclosure state
     pub voice_hotkeys_open: bool,
 
-    // Keep in-flight slider edits from jumping back on echoed Settings events
-    pub last_audio_edit: Option<Instant>,
-    pub last_voice_edit: Option<Instant>,
+    // Keep in-flight continuous slider drags from jumping back on echoed Settings events
+    pub last_audio_gain_edit: Option<Instant>,
+    pub last_voice_pitch_edit: Option<Instant>,
+
+    // Real OS launch-on-login state (kept separate so echoed Settings never flip the toggle back)
+    pub autostart_enabled: bool,
 
     pub window_visible: bool,
     pub quitting: bool,
@@ -221,8 +224,9 @@ impl UiState {
             recording_hotkey: None,
             hotkey_errors: HashMap::new(),
             voice_hotkeys_open: false,
-            last_audio_edit: None,
-            last_voice_edit: None,
+            last_audio_gain_edit: None,
+            last_voice_pitch_edit: None,
+            autostart_enabled: crate::platform::is_autostart_enabled(),
             window_visible: !start_hidden,
             quitting: false,
         };
@@ -270,6 +274,7 @@ impl UiState {
     }
 
     pub fn open_settings(&mut self, tab: SettingsTab) {
+        self.autostart_enabled = crate::platform::is_autostart_enabled();
         self.dialog = Some(Dialog::Settings);
         self.settings_tab = tab;
         self.board_menu_id = None;
@@ -345,26 +350,27 @@ impl UiState {
             }
             UiEvent::Settings(next) => {
                 let now = Instant::now();
-                let keep_audio = self
-                    .last_audio_edit
+                let keep_audio_gains = self
+                    .last_audio_gain_edit
                     .is_some_and(|t| now.duration_since(t) < Duration::from_millis(400));
-                let keep_voice = self
-                    .last_voice_edit
+                let keep_voice_pitch = self
+                    .last_voice_pitch_edit
                     .is_some_and(|t| now.duration_since(t) < Duration::from_millis(400));
 
-                let audio = if keep_audio {
-                    self.settings.audio.clone()
-                } else {
-                    next.audio
-                };
-                let voice = if keep_voice {
-                    VoiceSettings {
-                        hotkeys: next.voice.hotkeys,
-                        ..self.settings.voice.clone()
-                    }
-                } else {
-                    next.voice
-                };
+                // Never suppress discrete state like `mic_muted`, `mic_passthrough`, or devices
+                // (which may arrive from hotkeys, tray, or `kavoxctl` mid-drag).
+                let mut audio = next.audio;
+                if keep_audio_gains {
+                    audio.mic_gain = self.settings.audio.mic_gain;
+                    audio.sounds_to_mic_gain = self.settings.audio.sounds_to_mic_gain;
+                    audio.sounds_to_monitor_gain = self.settings.audio.sounds_to_monitor_gain;
+                    audio.global_sound_volume = self.settings.audio.global_sound_volume;
+                }
+
+                let mut voice = next.voice;
+                if keep_voice_pitch && voice.enabled && voice.preset == crate::voices::CUSTOM {
+                    voice.semitones = self.settings.voice.semitones;
+                }
 
                 self.settings = Settings {
                     schema: next.schema,
@@ -400,43 +406,75 @@ impl UiState {
         }
     }
 
+    /// Updates discrete audio settings starting from authoritative core state under lock.
     pub fn update_audio(
         &mut self,
         controller: &Controller,
         update: impl FnOnce(&mut AudioSettings),
     ) {
-        update(&mut self.settings.audio);
-        self.last_audio_edit = Some(Instant::now());
-        controller
-            .lock()
-            .set_audio_settings(self.settings.audio.clone());
+        let mut core = controller.lock();
+        let mut audio = core.settings().audio.clone();
+        update(&mut audio);
+        self.settings.audio = audio.clone();
+        core.set_audio_settings(audio);
     }
 
+    /// Updates continuous gain sliders without ever clobbering concurrent mute/device changes.
+    pub fn update_audio_gain(
+        &mut self,
+        controller: &Controller,
+        update: impl FnOnce(&mut AudioSettings),
+    ) {
+        let mut core = controller.lock();
+        let mut audio = core.settings().audio.clone();
+        update(&mut audio);
+        self.settings.audio = audio.clone();
+        self.last_audio_gain_edit = Some(Instant::now());
+        core.set_audio_settings(audio);
+    }
+
+    /// Updates discrete voice changer settings starting from authoritative core state under lock.
     pub fn update_voice(
         &mut self,
         controller: &Controller,
         update: impl FnOnce(&mut VoiceSettings),
     ) {
-        update(&mut self.settings.voice);
-        self.last_voice_edit = Some(Instant::now());
-        controller
-            .lock()
-            .set_voice_changer(self.settings.voice.clone());
+        let mut core = controller.lock();
+        let mut voice = core.settings().voice.clone();
+        update(&mut voice);
+        self.settings.voice = voice.clone();
+        core.set_voice_changer(voice);
+    }
+
+    /// Updates the continuous pitch dial with short echo suppression on `semitones` only.
+    pub fn update_voice_pitch(
+        &mut self,
+        controller: &Controller,
+        update: impl FnOnce(&mut VoiceSettings),
+    ) {
+        let mut core = controller.lock();
+        let mut voice = core.settings().voice.clone();
+        update(&mut voice);
+        self.settings.voice = voice.clone();
+        self.last_voice_pitch_edit = Some(Instant::now());
+        core.set_voice_changer(voice);
     }
 
     pub fn update_app(&mut self, controller: &Controller, update: impl FnOnce(&mut AppSettings)) {
-        let prev = self.settings.app.clone();
-        update(&mut self.settings.app);
-        if self.settings.app.launch_on_login != prev.launch_on_login
-            && let Err(err) = crate::platform::set_autostart(self.settings.app.launch_on_login)
-        {
-            self.settings.app = prev;
+        let mut core = controller.lock();
+        let mut app = core.settings().app.clone();
+        update(&mut app);
+        self.settings.app = app.clone();
+        core.set_app_settings(app);
+    }
+
+    pub fn set_launch_on_login(&mut self, controller: &Controller, enabled: bool) {
+        if let Err(err) = crate::platform::set_autostart(enabled) {
             self.push_toast(NoticeLevel::Error, err);
             return;
         }
-        controller
-            .lock()
-            .set_app_settings(self.settings.app.clone());
+        self.autostart_enabled = enabled;
+        self.update_app(controller, |a| a.launch_on_login = enabled);
     }
 }
 
@@ -580,5 +618,39 @@ mod tests {
         assert_eq!(meter_fill(1.0), 1.0);
         assert!((meter_fill(0.001) - 0.0).abs() < 1e-4);
         assert!((meter_fill(0.1) - 2.0 / 3.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn slider_echo_suppression_preserves_external_mute_and_autostart() {
+        let snapshot = kavox_core::Snapshot {
+            settings: Settings::default(),
+            library: Library::default(),
+            devices: DeviceList::default(),
+            virtual_status: VirtualStatus::NotInstalled,
+            streams: StreamStatus::default(),
+            playing: Vec::new(),
+            notices: Vec::new(),
+            read_only: false,
+            platform: "linux",
+            backend: "pulse",
+        };
+        let mut state = UiState::from_snapshot(snapshot, "0.1.1", true, PathBuf::new(), false);
+        state.autostart_enabled = true;
+        state.settings.audio.sounds_to_mic_gain = 1.42;
+        state.last_audio_gain_edit = Some(Instant::now());
+
+        let mut incoming = Settings::default();
+        incoming.audio.sounds_to_mic_gain = 0.80; // stale echo from earlier drag frame
+        incoming.audio.mic_muted = true; // concurrent mute from hotkey/tray/kavoxctl
+        incoming.app.launch_on_login = false; // stored settings disagree with OS autostart
+
+        state.apply_core_event(UiEvent::Settings(incoming));
+
+        // Gain slider stays smooth on local dragged value...
+        assert!((state.settings.audio.sounds_to_mic_gain - 1.42).abs() < 1e-6);
+        // ...while external mute takes effect immediately...
+        assert!(state.settings.audio.mic_muted);
+        // ...and real OS autostart state isn't flipped back by stored settings.
+        assert!(state.autostart_enabled);
     }
 }
