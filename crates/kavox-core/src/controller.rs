@@ -214,6 +214,28 @@ impl Controller {
         }
         self.lock().shutdown();
     }
+
+    /// Re-enumerates devices (the wizard's "Check again" / Settings "Rescan devices").
+    ///
+    /// When the backend supports it, enumeration runs without the core lock so playback,
+    /// mute and the UI aren't blocked by a slow PulseAudio/WASAPI query.
+    pub fn rescan_devices(&self) -> DeviceList {
+        let enumerate = self.lock().backend.enumerator();
+        match enumerate {
+            Some(enumerate) => {
+                let started = Instant::now();
+                let listed = enumerate();
+                let mut core = self.lock();
+                // Another refresh finished while we enumerated; its list is at least as fresh.
+                if core.devices_listed_at <= started {
+                    core.apply_device_list(listed);
+                    core.ensure_streams();
+                }
+                core.devices.clone()
+            }
+            None => self.lock().devices(),
+        }
+    }
 }
 
 fn lock(core: &Mutex<Core>) -> MutexGuard<'_, Core> {
@@ -278,6 +300,9 @@ pub struct Core {
     recent_notices: Vec<Notice>,
     visible: bool,
     last_poll: Instant,
+    /// When a device listing was last applied, so a slow unlocked rescan can't overwrite a
+    /// newer list from the ticker's poll.
+    devices_listed_at: Instant,
     settings_dirty: Option<Instant>,
     library_dirty: Option<Instant>,
 }
@@ -319,6 +344,7 @@ impl Core {
             recent_notices: Vec::new(),
             visible: true,
             last_poll: Instant::now(),
+            devices_listed_at: Instant::now(),
             settings_dirty: None,
             library_dirty: None,
         };
@@ -1173,7 +1199,15 @@ impl Core {
     }
 
     fn refresh_devices(&mut self) {
-        match self.backend.list_devices() {
+        let listed = self.backend.list_devices();
+        self.apply_device_list(listed);
+    }
+
+    fn apply_device_list(&mut self, listed: Result<DeviceList>) {
+        if listed.is_ok() {
+            self.devices_listed_at = Instant::now();
+        }
+        match listed {
             Ok(list) if list != self.devices => {
                 self.devices = list.clone();
                 self.sink.emit(UiEvent::Devices(list));

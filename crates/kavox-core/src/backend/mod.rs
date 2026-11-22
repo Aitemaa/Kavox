@@ -94,9 +94,17 @@ pub trait StreamHandle: Send {
     fn device(&self) -> &str;
 }
 
+/// Stateless device enumeration that can run on any thread without the core lock.
+pub type DeviceEnumerator = fn() -> Result<DeviceList>;
+
 pub trait AudioBackend: Send {
     fn name(&self) -> &'static str;
     fn list_devices(&mut self) -> Result<DeviceList>;
+    /// Returns a stateless enumerator when listing devices doesn't need `&mut self`, so slow
+    /// enumeration (PulseAudio, WASAPI) can run without blocking everything else on the core.
+    fn enumerator(&self) -> Option<DeviceEnumerator> {
+        None
+    }
     /// Device the virtual renderer should open (if any) and the status to show.
     fn resolve_virtual(
         &mut self,

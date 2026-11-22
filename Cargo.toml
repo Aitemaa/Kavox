@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/*", "src-tauri"]
+members = ["crates/*"]
 
 [workspace.package]
 version = "0.0.0"
@@ -10,4 +10,10 @@ license = "GPL-3.0-or-later"
 repository = "https://github.com/Aitemaa/Kavox"
 
 [profile.release]
+opt-level = "s"
 strip = true
+lto = true
+codegen-units = 1
+
+[profile.release.package.kavox-core]
+opt-level = 3
