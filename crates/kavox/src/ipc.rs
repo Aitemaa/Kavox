@@ -7,8 +7,11 @@ use std::sync::mpsc::Sender;
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
-use kavox_core::{Controller, Error};
-use kavox_ipc::{MuteMode, Request, Response, SoundEntry};
+use kavox_core::{Controller, Core, Error, Retrigger, StreamInfo, VirtualStatus, voice};
+use kavox_ipc::{
+    BoardEntry, DeviceEntry, DevicesState, MixerPatch, MixerState, MuteMode, PlayingEntry, Request,
+    Response, SoundEntry, StatusInfo, StreamEntry, StreamsState, VoicePresetEntry, VoiceState,
+};
 
 use crate::state::AppCommand;
 
@@ -238,6 +241,8 @@ fn handle(slot: &IpcControllerSlot, cmd_tx: &Sender<AppCommand>, request: Reques
             }))
         }
         Request::List => {
+            let playing_ids: std::collections::HashSet<String> =
+                core.playing().into_iter().map(|p| p.sound_id).collect();
             let library = core.library();
             let sounds = library
                 .boards
@@ -252,6 +257,12 @@ fn handle(slot: &IpcControllerSlot, cmd_tx: &Sender<AppCommand>, request: Reques
                             name: s.name.clone(),
                             board: board.name.clone(),
                             hotkey: s.hotkey.clone(),
+                            board_id: Some(board.id.clone()),
+                            duration_ms: Some(s.duration_ms),
+                            volume: Some(s.volume),
+                            looping: Some(s.looping),
+                            retrigger: Some(retrigger_str(s.retrigger).to_owned()),
+                            playing: Some(playing_ids.contains(&s.id)),
                         })
                 })
                 .collect();
@@ -261,7 +272,306 @@ fn handle(slot: &IpcControllerSlot, cmd_tx: &Sender<AppCommand>, request: Reques
                 ..Response::default()
             })
         }
+        Request::ListBoards => Ok(Response {
+            ok: true,
+            boards: Some(boards_list(&core)),
+            ..Response::default()
+        }),
+        Request::SetBoard { target } => set_board(&mut core, &target),
+        Request::SetVoice {
+            enabled,
+            preset,
+            semitones,
+            hear_myself,
+        } => apply_voice(&mut core, enabled, preset, semitones, hear_myself),
+        Request::SetMixer(patch) => apply_mixer(&mut core, patch),
+        Request::Status => Ok(Response {
+            ok: true,
+            status: Some(status_info(&core)),
+            ..Response::default()
+        }),
         Request::Show => unreachable!(),
     };
     result.unwrap_or_else(|e| Response::error(e.code(), e.to_string()))
+}
+
+fn retrigger_str(mode: Retrigger) -> &'static str {
+    match mode {
+        Retrigger::Restart => "restart",
+        Retrigger::Overlap => "overlap",
+        Retrigger::Toggle => "toggle",
+    }
+}
+
+fn set_board(core: &mut Core, target: &str) -> Result<Response, Error> {
+    let board = core.resolve_board(target)?;
+    core.set_active_board(&board.id)?;
+    Ok(Response {
+        ok: true,
+        message: Some(format!("active board: {}", board.name)),
+        boards: Some(boards_list(core)),
+        ..Response::default()
+    })
+}
+
+fn boards_list(core: &Core) -> Vec<BoardEntry> {
+    let library = core.library();
+    library
+        .boards
+        .iter()
+        .map(|b| BoardEntry {
+            id: b.id.clone(),
+            name: b.name.clone(),
+            sound_count: b.sounds.len(),
+            active: b.id == library.active_board,
+        })
+        .collect()
+}
+
+fn voice_state(core: &Core) -> VoiceState {
+    let v = &core.settings().voice;
+    VoiceState {
+        enabled: v.enabled,
+        preset: v.preset.clone(),
+        semitones: v.semitones,
+        hear_myself: v.hear_myself,
+        presets: voice::PRESETS
+            .iter()
+            .map(|p| VoicePresetEntry {
+                id: p.id.to_owned(),
+                label: voice::label(p.id),
+                semitones: p.semitones,
+                wobble_depth: p.wobble_depth,
+                wobble_hz: p.wobble_hz,
+            })
+            .collect(),
+    }
+}
+
+fn mixer_state(core: &Core) -> MixerState {
+    let a = &core.settings().audio;
+    MixerState {
+        mic_muted: a.mic_muted,
+        mic_passthrough: a.mic_passthrough,
+        mic_gain: a.mic_gain,
+        sounds_to_mic_gain: a.sounds_to_mic_gain,
+        sounds_to_monitor_gain: a.sounds_to_monitor_gain,
+        monitor_enabled: a.monitor_enabled,
+        normalize: a.normalize,
+        global_volume_override: a.global_volume_override,
+        global_sound_volume: a.global_sound_volume,
+    }
+}
+
+fn apply_voice(
+    core: &mut Core,
+    enabled: Option<bool>,
+    preset: Option<String>,
+    semitones: Option<f32>,
+    hear_myself: Option<bool>,
+) -> Result<Response, Error> {
+    let mut changer = core.settings().voice.clone();
+    let has_preset = preset.is_some();
+
+    if let Some(raw_preset) = preset {
+        let normalized = raw_preset.trim().to_lowercase();
+        let valid = normalized == voice::NORMAL
+            || normalized == voice::CUSTOM
+            || voice::preset(&normalized).is_some();
+        if !valid {
+            let valid_names: Vec<&str> = [voice::NORMAL, voice::CUSTOM]
+                .into_iter()
+                .chain(voice::PRESETS.iter().map(|p| p.id))
+                .collect();
+            return Err(Error::Invalid(format!(
+                "unknown voice preset \"{raw_preset}\"; valid presets: {}",
+                valid_names.join(", ")
+            )));
+        }
+        changer.preset = normalized;
+        if enabled.is_none() {
+            changer.enabled = changer.preset != voice::NORMAL;
+        }
+    }
+
+    if let Some(st) = semitones {
+        if !st.is_finite() {
+            return Err(Error::Invalid("semitones must be a finite number".into()));
+        }
+        changer.semitones = st.clamp(-12.0, 12.0);
+        if !has_preset {
+            changer.preset = voice::CUSTOM.to_owned();
+            if enabled.is_none() {
+                changer.enabled = true;
+            }
+        }
+    }
+
+    if let Some(on) = enabled {
+        changer.enabled = on;
+    }
+
+    if let Some(hear) = hear_myself {
+        changer.hear_myself = hear;
+    }
+
+    core.set_voice_changer(changer);
+    let state = voice_state(core);
+    let summary = if state.enabled {
+        if state.preset == voice::CUSTOM {
+            format!("voice changer on (custom {:+.1} st)", state.semitones)
+        } else {
+            format!("voice changer on ({})", state.preset)
+        }
+    } else {
+        "voice changer off".to_owned()
+    };
+    Ok(Response {
+        ok: true,
+        message: Some(summary),
+        voice: Some(state),
+        ..Response::default()
+    })
+}
+
+fn apply_mixer(core: &mut Core, patch: MixerPatch) -> Result<Response, Error> {
+    let check_gain = |name: &str, v: Option<f32>| -> Result<(), Error> {
+        if let Some(val) = v
+            && !val.is_finite()
+        {
+            return Err(Error::Invalid(format!("{name} must be a finite number")));
+        }
+        Ok(())
+    };
+    check_gain("mic_gain", patch.mic_gain)?;
+    check_gain("sounds_to_mic_gain", patch.sounds_to_mic_gain)?;
+    check_gain("sounds_to_monitor_gain", patch.sounds_to_monitor_gain)?;
+    check_gain("global_sound_volume", patch.global_sound_volume)?;
+
+    let mut audio = core.settings().audio.clone();
+    if let Some(v) = patch.mic_muted {
+        audio.mic_muted = v;
+    }
+    if let Some(v) = patch.mic_passthrough {
+        audio.mic_passthrough = v;
+    }
+    if let Some(v) = patch.mic_gain {
+        audio.mic_gain = v;
+    }
+    if let Some(v) = patch.sounds_to_mic_gain {
+        audio.sounds_to_mic_gain = v;
+    }
+    if let Some(v) = patch.sounds_to_monitor_gain {
+        audio.sounds_to_monitor_gain = v;
+    }
+    if let Some(v) = patch.monitor_enabled {
+        audio.monitor_enabled = v;
+    }
+    if let Some(v) = patch.normalize {
+        audio.normalize = v;
+    }
+    if let Some(v) = patch.global_volume_override {
+        audio.global_volume_override = v;
+    }
+    if let Some(v) = patch.global_sound_volume {
+        audio.global_sound_volume = v;
+    }
+    core.set_audio_settings(audio);
+    Ok(Response {
+        ok: true,
+        message: Some("mixer updated".to_owned()),
+        mixer: Some(mixer_state(core)),
+        ..Response::default()
+    })
+}
+
+fn status_info(core: &Core) -> StatusInfo {
+    let library = core.library();
+    let active_board_id = library.active_board.clone();
+    let active_board_name = library
+        .board(&active_board_id)
+        .map(|b| b.name.clone())
+        .unwrap_or_default();
+
+    let playing = core
+        .playing()
+        .into_iter()
+        .map(|p| {
+            let sound_name = library
+                .sounds
+                .get(&p.sound_id)
+                .map(|s| s.name.clone())
+                .unwrap_or_else(|| p.sound_id.clone());
+            let progress = if p.frames > 0 {
+                (p.frame as f32 / p.frames as f32).clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
+            PlayingEntry {
+                sound_id: p.sound_id,
+                sound_name,
+                voice_id: p.voice_id,
+                frame: p.frame,
+                frames: p.frames,
+                progress,
+            }
+        })
+        .collect();
+
+    let stream_entry = |s: StreamInfo| StreamEntry {
+        device: s.device,
+        label: s.label,
+        rate: s.rate,
+        fallback: s.fallback,
+    };
+    let s = core.stream_status();
+    let streams = StreamsState {
+        mic: s.mic.map(stream_entry),
+        virtual_out: s.virtual_out.map(stream_entry),
+        monitor: s.monitor.map(stream_entry),
+    };
+
+    let d = core.device_list();
+    let devices = DevicesState {
+        inputs: d
+            .inputs
+            .iter()
+            .map(|dev| DeviceEntry {
+                id: dev.id.clone(),
+                label: dev.label.clone(),
+                is_default: dev.is_default,
+            })
+            .collect(),
+        outputs: d
+            .outputs
+            .iter()
+            .map(|dev| DeviceEntry {
+                id: dev.id.clone(),
+                label: dev.label.clone(),
+                is_default: dev.is_default,
+            })
+            .collect(),
+    };
+
+    let virtual_status = match core.virtual_status() {
+        VirtualStatus::Ok { device, mic_label } => format!("ok ({mic_label} via {device})"),
+        VirtualStatus::NotInstalled => "not installed".to_owned(),
+        VirtualStatus::Missing { device } => format!("missing ({device})"),
+        VirtualStatus::CableIsDefaultOutput { device, mic_label } => {
+            format!("warning: cable is default output ({mic_label} via {device})")
+        }
+        VirtualStatus::Failed { message } => format!("failed: {message}"),
+    };
+
+    StatusInfo {
+        active_board_id,
+        active_board_name,
+        boards: boards_list(core),
+        playing,
+        mixer: mixer_state(core),
+        voice: voice_state(core),
+        virtual_status,
+        streams,
+        devices,
+    }
 }

@@ -8,3 +8,5 @@ repository.workspace = true
 
 [dependencies]
 kavox-ipc = { version = "0.0.0", path = "../kavox-ipc" }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"

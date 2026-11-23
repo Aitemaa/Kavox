@@ -14,6 +14,7 @@
   <a href="#what-this-repo-is">About</a> ·
   <a href="#how-it-works">How it works</a> ·
   <a href="#status">Roadmap</a> ·
+  <a href="docs/MCP.md">MCP</a> ·
   <a href="docs/PRD.md">PRD</a> ·
   <a href="docs/TECH.md">Tech design</a> ·
   <a href="#license">License</a>
@@ -70,7 +71,7 @@ Kavox runs as a single native Rust process (`egui`/`eframe` + OpenGL) instead of
 
 Done:
 
-- **v0.1:** native Rust UI (`egui`/`eframe`), pads with drag-to-reorder, global hotkeys, mic passthrough with clock-drift correction, headphone monitor, setup wizard, tray, `kavoxctl` CLI
+- **v0.1:** native Rust UI (`egui`/`eframe`), pads with drag-to-reorder, global hotkeys, mic passthrough with clock-drift correction, headphone monitor, setup wizard, tray, `kavoxctl` CLI (with [MCP server](docs/MCP.md))
 - **Voice changer:** pitch presets and dial, hear-myself monitoring, a hotkey per voice, tray toggle
 - **From v0.2:** multiple boards, loudness normalization, loop mode, launch on login
 
@@ -143,6 +144,19 @@ cargo build --release         # optimized binaries in target/release/
 Other tools:
 
 - `cargo run -p kavoxctl -- play airhorn` controls a running Kavox (see Settings → Hotkeys for compositor bindings).
+- `kavoxctl mcp` exposes Kavox over stdio as an MCP (Model Context Protocol) server for AI assistants (playback, boards, mic mute, voice changer, mixer levels, and live status). See [docs/MCP.md](docs/MCP.md) for the full tool and resource reference. Example MCP client config:
+
+  ```json
+  {
+    "mcpServers": {
+      "kavox": {
+        "command": "kavoxctl",
+        "args": ["mcp"]
+      }
+    }
+  }
+  ```
+
 - `cargo run -p kavox-core --example spike -- probe` measures how long a sound takes to reach the virtual mic.
 
 ## Not a goal
