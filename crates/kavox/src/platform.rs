@@ -77,6 +77,10 @@ fn auto_launch_handle() -> Result<auto_launch::AutoLaunch, String> {
 }
 
 pub fn is_autostart_enabled() -> bool {
+    // Unit tests build UI state; never look at the real login items.
+    if cfg!(test) {
+        return false;
+    }
     auto_launch_handle()
         .and_then(|al| al.is_enabled().map_err(|e| e.to_string()))
         .unwrap_or(false)

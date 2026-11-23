@@ -496,3 +496,6 @@ impl KavoxApp {
         }
     }
 }
+
+#[cfg(test)]
+mod screenshots;
