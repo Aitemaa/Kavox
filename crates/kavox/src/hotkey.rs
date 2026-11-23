@@ -92,6 +92,17 @@ impl HotkeyService {
         self.supported
     }
 
+    /// A service that never touches the OS (no manager, no thread), for offscreen UI tests.
+    #[cfg(test)]
+    pub fn inert() -> Self {
+        Self {
+            manager: None,
+            registered: Vec::new(),
+            state: Arc::default(),
+            supported: false,
+        }
+    }
+
     /// Re-registers every binding; returns the ones the OS refused as `(hotkey, reason)`.
     pub fn sync(&mut self, controller: &Controller) -> Vec<(String, String)> {
         if !self.supported {
@@ -286,7 +297,10 @@ fn detect_numlock_off_numpad(
 
 fn is_digit_key(key: &egui::Key) -> bool {
     use egui::Key::*;
-    matches!(key, Num0 | Num1 | Num2 | Num3 | Num4 | Num5 | Num6 | Num7 | Num8 | Num9)
+    matches!(
+        key,
+        Num0 | Num1 | Num2 | Num3 | Num4 | Num5 | Num6 | Num7 | Num8 | Num9
+    )
 }
 
 fn egui_key_token(key: egui::Key) -> Option<&'static str> {

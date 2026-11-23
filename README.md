@@ -12,6 +12,7 @@
 
 <p align="center">
   <a href="#what-this-repo-is">About</a> ·
+  <a href="#screenshots">Screenshots</a> ·
   <a href="#how-it-works">How it works</a> ·
   <a href="#status">Roadmap</a> ·
   <a href="docs/MCP.md">MCP</a> ·
@@ -25,6 +26,33 @@
 A free, open-source soundboard and voice changer for Windows and Linux — written in native Rust with no browser or WebView runtime.
 
 Kavox = **Ka**rel + **vox** (Latin for "voice").
+
+## Screenshots
+
+<p align="center">
+  <img src="docs/screenshots/soundboard-dark.png" alt="Kavox soundboard in the dark theme: a grid of pads with hotkeys and durations, one pad playing with a Stop button, and the mic, sounds and headphone faders along the bottom" width="100%">
+</p>
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/soundboard-light.png" alt="The same soundboard in the light theme"></td>
+    <td width="50%"><img src="docs/screenshots/voice-dark.png" alt="Voice changer with the Chipmunk preset selected and the pitch dial at +10 semitones"></td>
+  </tr>
+  <tr>
+    <td align="center">Soundboard, light theme</td>
+    <td align="center">Voice changer: presets, pitch dial, hear myself</td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/pad-editor-dark.png" alt="Pad editor drawer with name, color, volume, hotkey and trigger mode"></td>
+    <td width="50%"><img src="docs/screenshots/voice-light.png" alt="Voice changer in the light theme"></td>
+  </tr>
+  <tr>
+    <td align="center">Pad editor: color, volume, hotkey, trigger mode</td>
+    <td align="center">Voice changer, light theme</td>
+  </tr>
+</table>
+
+<sub>Rendered offscreen from Kavox's own UI code with made-up demo sounds (<code>KAVOX_SNAPSHOT_DIR=docs/screenshots cargo test -p kavox render_readme_screenshots</code>); no window or audio device is opened.</sub>
 
 ## What this repo is
 
