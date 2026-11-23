@@ -368,6 +368,17 @@ impl Core {
         &self.virtual_status
     }
 
+    pub fn device_list(&self) -> &DeviceList {
+        &self.devices
+    }
+
+    pub fn playing(&self) -> Vec<PlaybackEvent> {
+        self.voices
+            .keys()
+            .filter_map(|&v| self.playback_event(v, PlaybackState::Progress))
+            .collect()
+    }
+
     /// Full state for a freshly loaded UI; also hands over recent notices it missed.
     pub fn snapshot(&mut self) -> Snapshot {
         Snapshot {
@@ -376,11 +387,7 @@ impl Core {
             devices: self.devices.clone(),
             virtual_status: self.virtual_status.clone(),
             streams: self.stream_status(),
-            playing: self
-                .voices
-                .keys()
-                .filter_map(|&v| self.playback_event(v, PlaybackState::Progress))
-                .collect(),
+            playing: self.playing(),
             notices: std::mem::take(&mut self.recent_notices),
             platform: std::env::consts::OS,
             backend: self.backend.name(),
@@ -397,6 +404,10 @@ impl Core {
 
     pub fn resolve(&self, target: &str) -> Result<Sound> {
         self.library.resolve(target).cloned()
+    }
+
+    pub fn resolve_board(&self, target: &str) -> Result<Board> {
+        self.library.resolve_board(target).cloned()
     }
 
     pub fn set_visible(&mut self, visible: bool) {
@@ -1165,7 +1176,7 @@ impl Core {
         rates
     }
 
-    fn stream_status(&self) -> StreamStatus {
+    pub fn stream_status(&self) -> StreamStatus {
         let info = |o: &Output| StreamInfo {
             device: o.stream.device().to_owned(),
             label: o.label.clone(),

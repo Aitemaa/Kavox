@@ -14,12 +14,56 @@ pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(5);
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "cmd", rename_all = "kebab-case")]
 pub enum Request {
-    Play { target: String },
-    Stop { target: String },
+    Play {
+        target: String,
+    },
+    Stop {
+        target: String,
+    },
     StopAll,
-    Mute { mode: MuteMode },
+    Mute {
+        mode: MuteMode,
+    },
     List,
     Show,
+    Status,
+    ListBoards,
+    SetBoard {
+        target: String,
+    },
+    SetVoice {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        enabled: Option<bool>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        preset: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        semitones: Option<f32>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        hear_myself: Option<bool>,
+    },
+    SetMixer(MixerPatch),
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct MixerPatch {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mic_muted: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mic_passthrough: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mic_gain: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sounds_to_mic_gain: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sounds_to_monitor_gain: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub monitor_enabled: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub normalize: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub global_volume_override: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub global_sound_volume: Option<f32>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -39,6 +83,14 @@ pub struct Response {
     pub message: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sounds: Option<Vec<SoundEntry>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub boards: Option<Vec<BoardEntry>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<StatusInfo>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub voice: Option<VoiceState>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mixer: Option<MixerState>,
 }
 
 impl Response {
@@ -82,6 +134,111 @@ pub struct SoundEntry {
     pub board: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hotkey: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub board_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub volume: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub looping: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retrigger: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub playing: Option<bool>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BoardEntry {
+    pub id: String,
+    pub name: String,
+    pub sound_count: usize,
+    pub active: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PlayingEntry {
+    pub sound_id: String,
+    pub sound_name: String,
+    pub voice_id: u64,
+    pub frame: usize,
+    pub frames: usize,
+    pub progress: f32,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct VoicePresetEntry {
+    pub id: String,
+    pub label: String,
+    pub semitones: f32,
+    pub wobble_depth: f32,
+    pub wobble_hz: f32,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct VoiceState {
+    pub enabled: bool,
+    pub preset: String,
+    pub semitones: f32,
+    pub hear_myself: bool,
+    pub presets: Vec<VoicePresetEntry>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MixerState {
+    pub mic_muted: bool,
+    pub mic_passthrough: bool,
+    pub mic_gain: f32,
+    pub sounds_to_mic_gain: f32,
+    pub sounds_to_monitor_gain: f32,
+    pub monitor_enabled: bool,
+    pub normalize: bool,
+    pub global_volume_override: bool,
+    pub global_sound_volume: f32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StreamEntry {
+    pub device: String,
+    pub label: String,
+    pub rate: u32,
+    pub fallback: bool,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StreamsState {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mic: Option<StreamEntry>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub virtual_out: Option<StreamEntry>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub monitor: Option<StreamEntry>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeviceEntry {
+    pub id: String,
+    pub label: String,
+    pub is_default: bool,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DevicesState {
+    pub inputs: Vec<DeviceEntry>,
+    pub outputs: Vec<DeviceEntry>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StatusInfo {
+    pub active_board_id: String,
+    pub active_board_name: String,
+    pub boards: Vec<BoardEntry>,
+    pub playing: Vec<PlayingEntry>,
+    pub mixer: MixerState,
+    pub voice: VoiceState,
+    pub virtual_status: String,
+    pub streams: StreamsState,
+    pub devices: DevicesState,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -245,6 +402,54 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&Response::ok()).unwrap(),
             r#"{"ok":true}"#
+        );
+    }
+
+    #[test]
+    fn extended_requests_wire_format() {
+        let status = serde_json::to_string(&Envelope {
+            v: 1,
+            request: Request::Status,
+        })
+        .unwrap();
+        assert_eq!(status, r#"{"v":1,"cmd":"status"}"#);
+
+        let voice = serde_json::to_string(&Envelope {
+            v: 1,
+            request: Request::SetVoice {
+                enabled: Some(true),
+                preset: Some("chipmunk".into()),
+                semitones: None,
+                hear_myself: Some(false),
+            },
+        })
+        .unwrap();
+        assert_eq!(
+            voice,
+            r#"{"v":1,"cmd":"set-voice","enabled":true,"preset":"chipmunk","hear_myself":false}"#
+        );
+
+        let mixer = serde_json::to_string(&Envelope {
+            v: 1,
+            request: Request::SetMixer(MixerPatch {
+                mic_gain: Some(1.25),
+                normalize: Some(true),
+                ..MixerPatch::default()
+            }),
+        })
+        .unwrap();
+        assert_eq!(
+            mixer,
+            r#"{"v":1,"cmd":"set-mixer","mic_gain":1.25,"normalize":true}"#
+        );
+        let parsed: Envelope = serde_json::from_str(&mixer).unwrap();
+        assert_eq!(
+            parsed.request,
+            Request::SetMixer(MixerPatch {
+                mic_gain: Some(1.25),
+                normalize: Some(true),
+                ..MixerPatch::default()
+            })
         );
     }
 }

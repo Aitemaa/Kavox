@@ -321,24 +321,27 @@ module-remap-source master=kavox_sink.monitor source_name=kavox_mic source_prope
 
 ### 7.2 `kavoxctl` and the IPC protocol
 
-`kavoxctl` is a separate, tiny binary (no webview, starts in a few ms), so compositor bindings stay within the latency budget.
+`kavoxctl` is a separate, tiny binary (no GUI runtime, starts in a few ms), so compositor bindings stay within the latency budget.
 
 ```
-kavoxctl play <name|id>     kavoxctl stop <name|id>
-kavoxctl stop-all           kavoxctl mute [on|off|toggle]
-kavoxctl list
+kavoxctl play <name|id>         kavoxctl stop <name|id>
+kavoxctl stop-all               kavoxctl mute [on|off|toggle]
+kavoxctl list                   kavoxctl boards
+kavoxctl board <name|id>        kavoxctl voice on|off|<preset>
+kavoxctl voice pitch <st>       kavoxctl status
+kavoxctl mcp
 ```
 
-- Transport: named pipe `\\.\pipe\kavox` on Windows, `$XDG_RUNTIME_DIR/kavox.sock` on Linux (permissions `0600`).
-- Protocol: one JSON object per line, request/response.
+- Transport: named pipe `kavox-<USERNAME>` on Windows, `$XDG_RUNTIME_DIR/kavox.sock` on Linux.
+- Protocol (`v: 1`): one JSON object per line, request/response. Commands: `play`, `stop`, `stop-all`, `mute`, `list`, `show`, `status`, `list-boards`, `set-board`, `set-voice`, and `set-mixer`.
 
   ```json
   {"v":1,"cmd":"play","target":"airhorn"}
   {"ok":true}
-  {"ok":false,"error":{"code":"SoundNotFound","message":"No sound named 'airhorn'"}}
+  {"ok":false,"error":{"code":"SoundNotFound","message":"no sound matches \"airhorn\""}}
   ```
 
-- Name matching: exact id, then case-insensitive exact name, then a unique prefix. Ambiguous matches return an error listing candidates.
+- Name matching (sounds and boards): exact id, then case-insensitive exact name, then a unique prefix. Ambiguous matches return an error listing candidates.
 - If Kavox isn't running, `kavoxctl` exits with code 2 and a message.
 
 Example Hyprland binding:
@@ -346,6 +349,10 @@ Example Hyprland binding:
 ```
 bind = , F13, exec, kavoxctl play airhorn
 ```
+
+### 7.3 MCP server (`kavoxctl mcp`)
+
+`kavoxctl mcp` runs a stdio Model Context Protocol (MCP) server speaking newline-delimited JSON-RPC 2.0 directly over `stdin`/`stdout` with no additional runtime dependencies (reusing `serde` and `serde_json` already in the workspace). Every tool call and resource read translates into a `kavox-ipc` request against the running Kavox app, so changes to playback, active board, mic mute, voice changer, and mixer gains are reflected live in the UI. See [MCP.md](MCP.md) for client setup and the full tool/resource reference.
 
 ## 8. PTT assist (P1, Windows)
 

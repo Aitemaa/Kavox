@@ -320,6 +320,33 @@ impl Library {
         }
         Err(Error::SoundNotFound(target.to_owned()))
     }
+
+    /// Finds a board by id, then exact name, then unique name prefix (case-insensitive).
+    pub fn resolve_board(&self, target: &str) -> Result<&Board> {
+        let target = target.trim();
+        if let Some(board) = self.boards.iter().find(|b| b.id == target) {
+            return Ok(board);
+        }
+        let lower = target.to_lowercase();
+        let rules: [&dyn Fn(&Board) -> bool; 2] = [&|b| b.name.to_lowercase() == lower, &|b| {
+            b.name.to_lowercase().starts_with(&lower)
+        }];
+        for rule in rules {
+            let matches: Vec<&Board> = self.boards.iter().filter(|b| rule(b)).collect();
+            match matches.len() {
+                0 => continue,
+                1 => return Ok(matches[0]),
+                _ => {
+                    let names: Vec<&str> = matches.iter().map(|b| b.name.as_str()).collect();
+                    return Err(Error::Invalid(format!(
+                        "\"{target}\" matches several boards: {}",
+                        names.join(", ")
+                    )));
+                }
+            }
+        }
+        Err(Error::BoardNotFound)
+    }
 }
 
 /// Copies an audio file into the library folder and analyzes it. Runs without the core lock.
@@ -525,6 +552,21 @@ mod tests {
         assert!(matches!(
             prepare_import(&txt, &sounds_dir, &hashes),
             Err(Error::UnsupportedFormat(_))
+        ));
+    }
+
+    #[test]
+    fn resolves_board_by_id_name_and_prefix() {
+        let mut lib = Library::default();
+        let memes = lib.create_board("Memes").unwrap().id.clone();
+        let metal = lib.create_board("Metal").unwrap().id.clone();
+        assert_eq!(lib.resolve_board(&memes).unwrap().name, "Memes");
+        assert_eq!(lib.resolve_board("memes").unwrap().id, memes);
+        assert_eq!(lib.resolve_board("met").unwrap().id, metal);
+        assert!(matches!(lib.resolve_board("me"), Err(Error::Invalid(_))));
+        assert!(matches!(
+            lib.resolve_board("missing"),
+            Err(Error::BoardNotFound)
         ));
     }
 }

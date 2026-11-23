@@ -1940,6 +1940,8 @@ name = "kavoxctl"
 version = "0.0.0"
 dependencies = [
  "kavox-ipc",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
